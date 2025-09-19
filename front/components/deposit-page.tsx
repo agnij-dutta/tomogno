@@ -279,20 +279,6 @@ export default function DepositPage() {
                 </div>
               </div>
 
-              {/* Debug Info - Remove in production */}
-              {process.env.NODE_ENV === 'development' && (
-                <div className="mb-4 p-3 rounded-lg bg-gray-800/50 border border-gray-600 text-xs text-gray-300">
-                  <div>Debug: isRegistered = {String(isRegistered)}</div>
-                  <div>isLoading = {String(isCheckingRegistration)}</div>
-                  <div>isRegistering = {String(isRegistering)}</div>
-                  <div>isPreparingRegistration = {String(isPreparingRegistration)}</div>
-                  <div>isRegistrationConfirming = {String(isRegistrationConfirming)}</div>
-                  <div>isRegistrationConfirmed = {String(isRegistrationConfirmed)}</div>
-                  <div>hasProofReady = {String(hasProofReady)}</div>
-                  <div>registrationHash = {registrationHash || 'null'}</div>
-                  <div>address = {address}</div>
-                </div>
-              )}
 
               {/* Registration Status */}
               {!isRegistered && (
