@@ -12,7 +12,7 @@ import {
   CheckCircle2,
   AlertTriangle,
 } from "lucide-react"
-import LiquidEther from "./liquid-ether"
+// Liquid Ether background removed
 
 export default function TsunamiSwap() {
   const tokenList = useMemo(
@@ -121,27 +121,7 @@ export default function TsunamiSwap() {
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden flex flex-col items-center">
-      <div className="absolute inset-0 z-0">
-        <LiquidEther
-          colors={["#5227FF", "#FF9FFC", "#B19EEF"]}
-          mouseForce={0}
-          cursorSize={0}
-          isViscous={false}
-          viscous={30}
-          iterationsViscous={32}
-          iterationsPoisson={32}
-          resolution={0.5}
-          isBounce={false}
-          autoDemo={true}
-          autoSpeed={0.6}
-          autoIntensity={2.0}
-          takeoverDuration={0}
-          autoResumeDelay={0}
-          autoRampDuration={0.4}
-        />
-      </div>
-
-      <div className="pointer-events-none absolute inset-0 bg-black/15 z-1" />
+      {/* Liquid Ether background removed */}
 
       <div className="pt-28 mb-6 relative z-10">
         <div className="flex items-center gap-3 bg-white/5 border border-white/10 backdrop-blur-md rounded-3xl px-4 py-2 shadow-[0_8px_28px_rgba(0,0,0,0.35)]">
