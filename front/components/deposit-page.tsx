@@ -19,7 +19,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Progress } from "@/components/ui/progress"
 import { useNativeAVAX } from "@/hooks/use-native-avax"
 import { useEncryptedBalance } from "@/hooks/use-encrypted-balance"
-import { useReadContract, useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { useReadContract, useAccount, useWriteContract, useWaitForTransactionReceipt, useChainId, useSwitchChain } from 'wagmi'
 import { useRegistrationStatus } from '@/hooks/use-registration-status'
 import { useRegistration } from '@/hooks/use-registration'
 import { REGISTRAR_CONTRACT, EERC_CONTRACT, ERC20_TEST } from '@/lib/contracts'
@@ -44,9 +44,12 @@ export default function DepositPage() {
   const [denom, setDenom] = useState<number | "">("")
   const [successOpen, setSuccessOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [depositError, setDepositError] = useState<string | null>(null)
   
   useEffect(() => setMounted(true), [])
-  const { address } = useAccount()
+  const { address, isConnected, connector } = useAccount()
+  const chainId = useChainId()
+  const { switchChain, isPending: isSwitchingChain } = useSwitchChain()
   const {
     balance: publicBalance,
     balanceRaw,
@@ -99,52 +102,163 @@ export default function DepositPage() {
     }
   })
 
-  const { writeContract: depositTokens, data: depositHash, isPending: isDepositPending } = useWriteContract()
+  const { writeContract: depositTokens, data: depositHash, isPending: isDepositPending, error: writeError } = useWriteContract()
   const { isLoading: isDepositConfirming, isSuccess: isDepositConfirmed } = useWaitForTransactionReceipt({ hash: depositHash })
 
+  // Debug wagmi states
+  useEffect(() => {
+    console.log('🔍 Wagmi states:', {
+      depositHash,
+      isDepositPending,
+      writeError: writeError?.message,
+      isDepositConfirming,
+      isDepositConfirmed
+    })
+  }, [depositHash, isDepositPending, writeError, isDepositConfirming, isDepositConfirmed])
+
+  // Debug chain status
+  useEffect(() => {
+    console.log('🔗 Chain status:', {
+      currentChainId: chainId,
+      targetChainId: avalancheFuji.id,
+      isCorrectChain: chainId === avalancheFuji.id,
+      shouldShowSwitchButton: chainId !== avalancheFuji.id,
+      avalancheFujiId: avalancheFuji.id,
+      chainIdType: typeof chainId
+    })
+  }, [chainId])
+
+  // Force show switch button if there's a write error about chain mismatch
+  const hasChainMismatchError = writeError?.message?.includes('chain') || writeError?.message?.includes('Chain ID')
+  const shouldShowSwitchButton = chainId !== avalancheFuji.id || hasChainMismatchError
+
+  // Add a manual refresh function
+  const refreshChainStatus = () => {
+    console.log('🔄 Manually refreshing chain status...')
+    window.location.reload()
+  }
+
   async function onConfirmDeposit() {
-    // Check if user is registered first
-    if (!isRegistered) {
-      console.error('❌ User not registered. Please register first.')
-      return
+    try {
+      setDepositError(null) // Clear any previous errors
+      
+      console.log('🔍 Pre-deposit checks:', {
+        isRegistered,
+        hasUserPublicKey: !!userPublicKey,
+        userPublicKeyLength: userPublicKey ? (userPublicKey as any[]).length : 0,
+        address,
+        isConnected,
+        connector: connector?.name,
+        currentChainId: chainId,
+        targetChainId: avalancheFuji.id,
+        isCorrectChain: chainId === avalancheFuji.id,
+        amount: numericAmount,
+        balance: publicBalance
+      })
+      
+      // Check if user is registered first
+      if (!isRegistered) {
+        const errorMsg = 'User not registered. Please register first.'
+        console.error('❌', errorMsg)
+        setDepositError(errorMsg)
+        return
+      }
+      
+      if (!userPublicKey || (userPublicKey as any[]).length !== 2) {
+        const errorMsg = 'User public key not available for deposit'
+        console.error('❌', errorMsg)
+        setDepositError(errorMsg)
+        return
+      }
+      
+      if (!address || !isConnected) {
+        const errorMsg = 'Wallet not connected'
+        console.error('❌', errorMsg)
+        setDepositError(errorMsg)
+        return
+      }
+      
+      if (chainId !== avalancheFuji.id) {
+        console.log('🔄 Wrong network detected, switching to Avalanche Fuji...')
+        try {
+          await switchChain({ chainId: avalancheFuji.id })
+          console.log('✅ Switched to Avalanche Fuji, retrying deposit...')
+          // Wait a moment for the chain switch to complete
+          setTimeout(() => {
+            onConfirmDeposit()
+          }, 1000)
+          return
+        } catch (error) {
+          const errorMsg = `Failed to switch to Avalanche Fuji. Please switch manually to Chain ID: ${avalancheFuji.id}`
+          console.error('❌', errorMsg)
+          setDepositError(errorMsg)
+          return
+        }
+      }
+      
+      const pub = [BigInt((userPublicKey as any[])[0].toString()), BigInt((userPublicKey as any[])[1].toString())]
+      
+      // Convert amount to wei first, then to BigInt for encryption
+      const amountWei = parseUnits(String(numericAmount), decimals || 18)
+      const depAmt = amountWei // Use the wei amount directly
+      
+      const { ciphertext, nonce, authKey } = processPoseidonEncryption([depAmt], pub)
+      const amountPCT: [bigint, bigint, bigint, bigint, bigint, bigint, bigint] = [
+        ...ciphertext,
+        ...authKey,
+        nonce,
+      ] as [bigint, bigint, bigint, bigint, bigint, bigint, bigint]
+      
+      console.log('🔐 Ready to deposit with public key:', {
+        amount: numericAmount,
+        amountWei: amountWei.toString(),
+        balance: publicBalance,
+        userPublicKey: pub.map(k => k.toString()),
+        amountPCT: amountPCT.map(x => x.toString()),
+        timestamp: new Date().toISOString()
+      })
+      
+      // For native AVAX, we need to send the value directly
+      console.log('🚀 Submitting deposit transaction...')
+      console.log('📋 Transaction details:', {
+        contractAddress: EERC_CONTRACT.address,
+        functionName: 'deposit',
+        args: [amountWei.toString(), "0x0000000000000000000000000000000000000000", amountPCT.map(x => x.toString())],
+        chainId: avalancheFuji.id,
+        value: amountWei.toString(),
+        userAddress: address
+      })
+      
+      // Validate the deposit parameters
+      console.log('🔍 Validating deposit parameters:', {
+        amountWei: amountWei.toString(),
+        tokenAddress: "0x0000000000000000000000000000000000000000",
+        amountPCTLength: amountPCT.length,
+        amountPCTValues: amountPCT.map(x => x.toString()),
+        userPublicKey: pub.map(k => k.toString()),
+        isRegistered,
+        hasUserPublicKey: !!userPublicKey
+      })
+      
+      console.log('🔄 Calling depositTokens function...')
+      
+      const result = await depositTokens({
+        address: EERC_CONTRACT.address,
+        abi: EERC_CONTRACT.abi,
+        functionName: 'deposit',
+        args: [amountWei, "0x0000000000000000000000000000000000000000", amountPCT], // Zero address for native token
+        chainId: avalancheFuji.id,
+        value: amountWei, // Send native AVAX
+      })
+      
+      console.log('✅ Deposit transaction submitted successfully!', result)
+      console.log('📊 Transaction hash:', result)
+      console.log('⏳ Waiting for transaction confirmation...')
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error occurred'
+      console.error('❌ Deposit failed:', error)
+      setDepositError(errorMsg)
     }
-    
-    if (!userPublicKey || (userPublicKey as any[]).length !== 2) {
-      console.error('❌ User public key not available for deposit')
-      return
-    }
-    
-    const pub = [BigInt((userPublicKey as any[])[0].toString()), BigInt((userPublicKey as any[])[1].toString())]
-    
-    // Convert amount to wei first, then to BigInt for encryption
-    const amountWei = parseUnits(String(numericAmount), decimals || 18)
-    const depAmt = amountWei // Use the wei amount directly
-    
-    const { ciphertext, nonce, authKey } = processPoseidonEncryption([depAmt], pub)
-    const amountPCT: [bigint, bigint, bigint, bigint, bigint, bigint, bigint] = [
-      ...ciphertext,
-      ...authKey,
-      nonce,
-    ] as [bigint, bigint, bigint, bigint, bigint, bigint, bigint]
-    
-    console.log('🔐 Ready to deposit with public key:', {
-      amount: numericAmount,
-      amountWei: amountWei.toString(),
-      balance: publicBalance,
-      userPublicKey: pub.map(k => k.toString()),
-      amountPCT: amountPCT.map(x => x.toString()),
-      timestamp: new Date().toISOString()
-    })
-    
-    // For native AVAX, we need to send the value directly
-    await depositTokens({
-      address: EERC_CONTRACT.address,
-      abi: EERC_CONTRACT.abi,
-      functionName: 'deposit',
-      args: [amountWei, "0x0000000000000000000000000000000000000000", amountPCT], // Zero address for native token
-      chainId: avalancheFuji.id,
-      value: amountWei, // Send native AVAX
-    })
   }
 
   // Create dynamic token from native AVAX balance
@@ -159,7 +273,7 @@ export default function DepositPage() {
   const numericAmount = useMemo(() => Number.parseFloat(amount.replace(/,/g, "")) || 0, [amount])
   const amountUsd = useMemo(() => numericAmount * selectedToken.priceUsd, [numericAmount, selectedToken])
   const insufficient = numericAmount > selectedToken.balance
-  const canConfirm = numericAmount > 0 && !insufficient && !balanceLoading && isRegistered
+  const canConfirm = numericAmount > 0 && !insufficient && !balanceLoading && isRegistered && chainId === avalancheFuji.id && !isSwitchingChain
 
   function setPct(p: number) {
     const next = Math.max(0, Math.min(selectedToken.balance, +(selectedToken.balance * p).toFixed(6)))
@@ -196,6 +310,84 @@ export default function DepositPage() {
       refetchRegistrationStatus()
     }
   }, [address, refetchRegistrationStatus, isCheckingRegistration])
+
+  // Monitor write errors
+  useEffect(() => {
+    if (writeError) {
+      console.error('❌ Write contract error:', writeError)
+      setDepositError(writeError.message || 'Transaction failed')
+    }
+  }, [writeError])
+
+  // Clear errors when chain switches correctly
+  useEffect(() => {
+    if (chainId === avalancheFuji.id && !hasChainMismatchError) {
+      console.log('✅ Chain is correct, clearing errors...')
+      setDepositError(null)
+    }
+  }, [chainId, hasChainMismatchError])
+
+  // Function to switch to Avalanche Fuji for deposits
+  const switchToAvalancheFuji = async () => {
+    try {
+      console.log('🔄 Switching to Avalanche Fuji for deposits...')
+      console.log('📍 Current chain before switch:', chainId)
+      
+      await switchChain({ chainId: avalancheFuji.id })
+      
+      console.log('✅ Switch request sent, waiting for confirmation...')
+      
+      // Wait for the chain switch to complete
+      let attempts = 0
+      const maxAttempts = 10
+      
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 1000)) // Wait 1 second
+        
+        console.log(`🔄 Checking chain switch... attempt ${attempts + 1}/${maxAttempts}`)
+        console.log('📍 Current chain after switch:', chainId)
+        
+        if (chainId === avalancheFuji.id) {
+          console.log('✅ Chain switch confirmed!')
+          setDepositError(null) // Clear any previous errors
+          return
+        }
+        
+        attempts++
+      }
+      
+      console.log('⚠️ Chain switch may not have completed, but continuing...')
+      
+    } catch (error) {
+      console.error('❌ Failed to switch chain:', error)
+      setDepositError('Failed to switch to Avalanche Fuji network. Please switch manually in your wallet.')
+    }
+  }
+
+  // Test function to debug writeContract
+  const testWriteContract = async () => {
+    try {
+      console.log('🧪 Testing writeContract with simple transaction...')
+      console.log('📋 Test transaction details:', {
+        address: EERC_CONTRACT.address,
+        abi: EERC_CONTRACT.abi,
+        functionName: 'name', // Read function
+        chainId: avalancheFuji.id
+      })
+      
+      // Try a simple read first to test connection
+      const result = await depositTokens({
+        address: EERC_CONTRACT.address,
+        abi: EERC_CONTRACT.abi,
+        functionName: 'name',
+        chainId: avalancheFuji.id,
+      })
+      
+      console.log('✅ Test transaction result:', result)
+    } catch (error) {
+      console.error('❌ Test transaction failed:', error)
+    }
+  }
 
   const obfuscate = (addr?: string) => (addr && addr.startsWith("0x") && addr.length > 6 ? `${addr.slice(0,6)}…${addr.slice(-4)}` : "0x…")
   const stealthAddress = mounted ? obfuscate(address) : "0x…"
@@ -366,6 +558,46 @@ export default function DepositPage() {
                 </div>
               )}
 
+              {/* Chain Status */}
+              {shouldShowSwitchButton && (
+                <div className="mb-6 p-4 rounded-xl bg-orange-500/10 border border-orange-500/20">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <AlertTriangle className="w-5 h-5 text-orange-400" />
+                      <div>
+                        <div className="text-orange-200 font-medium">Wrong Network</div>
+                        <div className="text-orange-300/80 text-sm">
+                          You're on Chain ID: {chainId}. Deposits require Avalanche Fuji (Chain ID: {avalancheFuji.id}).
+                          {hasChainMismatchError && " Click the button below to switch networks."}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        onClick={switchToAvalancheFuji}
+                        disabled={isSwitchingChain}
+                        className="bg-orange-500 hover:bg-orange-600 text-white font-medium px-4 py-2 rounded-lg"
+                      >
+                        {isSwitchingChain ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                            Switching...
+                          </>
+                        ) : (
+                          "Switch to Avalanche Fuji"
+                        )}
+                      </Button>
+                      <Button
+                        onClick={refreshChainStatus}
+                        className="bg-blue-500 hover:bg-blue-600 text-white font-medium px-3 py-2 rounded-lg text-sm"
+                      >
+                        Refresh
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Grid content */}
               <div className="grid lg:grid-cols-3 gap-6 mt-6">
                 {/* Left: Token & Amount + Key Generation + Privacy Settings */}
@@ -454,6 +686,12 @@ export default function DepositPage() {
                         <AlertTriangle className="w-4 h-4" /> Insufficient balance
                       </div>
                     )}
+
+                    {depositError && (
+                      <div className="mt-3 flex items-center gap-2 text-rose-200 bg-rose-500/15 border border-rose-500/40 px-3 py-2 rounded-lg text-sm">
+                        <AlertTriangle className="w-4 h-4" /> {depositError}
+                      </div>
+                    )}
                   </section>
 
 
@@ -526,21 +764,65 @@ export default function DepositPage() {
                     className="rounded-2xl backdrop-blur-xl border border-white/15 p-5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06),0_10px_28px_rgba(0,0,0,0.45)]"
                     style={{ background: "rgba(255,255,255,0.08)" }}
                   >
+                    {!shouldShowSwitchButton ? (
+                      <Button
+                        onClick={onConfirmDeposit}
+                        disabled={!canConfirm || isDepositPending || isDepositConfirming}
+                        className="w-full flex items-center justify-center gap-2 h-12 px-8 rounded-full bg-[#e6ff55] text-[#0a0b0e] font-bold text-sm hover:brightness-110 transition disabled:opacity-60"
+                      >
+                        {isDepositPending || isDepositConfirming ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            {isDepositPending ? "Sending…" : "Confirming…"}
+                          </>
+                        ) : (
+                          <>
+                            <Shield className="w-4 h-4" /> Confirm Deposit
+                          </>
+                        )}
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={switchToAvalancheFuji}
+                        disabled={isSwitchingChain}
+                        className="w-full flex items-center justify-center gap-2 h-12 px-8 rounded-full bg-orange-500 text-white font-bold text-sm hover:bg-orange-600 transition disabled:opacity-60"
+                      >
+                        {isSwitchingChain ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Switching...
+                          </>
+                        ) : (
+                          <>
+                            <AlertTriangle className="w-4 h-4" /> Switch to Avalanche Fuji
+                          </>
+                        )}
+                      </Button>
+                    )}
+
+                    {/* Debug Test Button */}
                     <Button
-                      onClick={onConfirmDeposit}
-                      disabled={!canConfirm || isDepositPending || isDepositConfirming}
-                      className="w-full flex items-center justify-center gap-2 h-12 px-8 rounded-full bg-[#e6ff55] text-[#0a0b0e] font-bold text-sm hover:brightness-110 transition disabled:opacity-60"
+                      onClick={testWriteContract}
+                      className="w-full flex items-center justify-center gap-2 h-8 px-4 rounded-full bg-blue-500 text-white font-medium text-xs hover:bg-blue-600 transition mt-2"
                     >
-                      {isDepositPending || isDepositConfirming ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          {isDepositPending ? "Sending…" : "Confirming…"}
-                        </>
-                      ) : (
-                        <>
-                          <Shield className="w-4 h-4" /> Confirm Deposit
-                        </>
-                      )}
+                      🧪 Test Contract Connection
+                    </Button>
+
+                    {/* Debug Chain Button */}
+                    <Button
+                      onClick={() => {
+                        console.log('🔍 Debug Chain Info:', {
+                          chainId,
+                          avalancheFujiId: avalancheFuji.id,
+                          isCorrectChain: chainId === avalancheFuji.id,
+                          shouldShowSwitchButton,
+                          hasChainMismatchError,
+                          writeError: writeError?.message
+                        })
+                      }}
+                      className="w-full flex items-center justify-center gap-2 h-8 px-4 rounded-full bg-purple-500 text-white font-medium text-xs hover:bg-purple-600 transition mt-2"
+                    >
+                      🔍 Debug Chain Status
                     </Button>
 
                   </section>
