@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import InfiniteHero from "@/components/ui/infinite-hero"
+import dynamic from "next/dynamic"
 import {
   Shield,
   Zap,
@@ -23,6 +23,20 @@ import {
 interface LandingProps {
   onNavigate: (page: string) => void
 }
+
+// Lazy-load heavy above-the-fold hero to speed up initial paint
+const InfiniteHero = dynamic(() => import("@/components/ui/infinite-hero"), {
+  ssr: false,
+  loading: () => (
+    <section className="relative h-screen flex items-center justify-center">
+      <div className="flex items-center gap-3 text-white/60">
+        <div className="h-3 w-3 rounded-full bg-white/30 animate-pulse" />
+        <div className="h-3 w-3 rounded-full bg-white/30 animate-pulse [animation-delay:150ms]" />
+        <div className="h-3 w-3 rounded-full bg-white/30 animate-pulse [animation-delay:300ms]" />
+      </div>
+    </section>
+  ),
+})
 
 export default function TZunamiApp() {
   return (

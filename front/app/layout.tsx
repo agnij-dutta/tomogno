@@ -2,8 +2,7 @@ import type React from "react"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
-import "../components/liquid-ether.css"
-import Navbar from "../components/navbar"
+import dynamic from "next/dynamic"
 // import LiquidEther from "../components/liquid-ether"
 import Providers from "./providers"
 import { ToastContainer } from "../components/simple-toast"
@@ -13,8 +12,24 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" })
 export const metadata: Metadata = {
   title: "tZunami - Private. Compliant. DeFi-native.",
   description: "Your tokens, your privacy. Built on Uniswap v4 + zkSNARKs.",
-    generator: 'v0.app'
+  generator: 'v0.app'
 }
+
+const Navbar = dynamic(() => import("../components/navbar"), {
+  ssr: false,
+  loading: () => (
+    <nav className="fixed top-0 left-0 right-0 z-50 px-6 py-4">
+      <div className="max-w-7xl mx-auto">
+        <div
+          className="backdrop-blur-3xl backdrop-saturate-200 border border-white/10 rounded-2xl px-6 py-6"
+          style={{ background: "rgba(255,255,255,0.04)" }}
+        >
+          <div className="h-6 w-48 bg-white/10 rounded animate-pulse" />
+        </div>
+      </div>
+    </nav>
+  ),
+})
 
 export default function RootLayout({
   children,
