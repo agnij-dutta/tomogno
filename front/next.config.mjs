@@ -8,6 +8,9 @@ const nextConfig = {
   },
   experimental: {
     forceSwcTransforms: true,
+    optimizePackageImports: [
+      "lucide-react",
+    ],
   },
   images: {
     unoptimized: true,

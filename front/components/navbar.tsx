@@ -1,6 +1,6 @@
 "use client"
-import { Shield, Home, ArrowLeftRight, BarChart3, Plus, Minus, User } from "lucide-react"
-import { useRouter } from "next/navigation"
+import { Shield } from "lucide-react"
+import { usePathname, useRouter } from "next/navigation"
 import { useAccount, useChainId, useConnect, useDisconnect } from 'wagmi'
 import { injected } from 'wagmi/connectors'
 import { toast } from 'sonner'
@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react'
 
 export default function Navbar() {
   const router = useRouter()
+  const pathname = usePathname()
   const { address } = useAccount()
   const chainId = useChainId()
   const { connect } = useConnect()
@@ -31,48 +32,17 @@ export default function Navbar() {
               <span className="font-bold text-xl text-white tracking-wide">tZunami</span>
             </button>
             <div className="flex items-center gap-6">
-              <button
-                onClick={() => router.push("/")}
-                className="flex items-center gap-2 text-sm transition-colors px-3 py-2 rounded-lg text-white hover:text-[#E8CFEA] hover:bg-white/10"
-              >
-                <Home className="w-4 h-4" />
-                Home
-              </button>
-              <button
-                onClick={() => router.push("/deposit")}
-                className="flex items-center gap-2 text-sm transition-colors px-3 py-2 rounded-lg text-white hover:text-[#E8CFEA] hover:bg-white/10"
-              >
-                <Plus className="w-4 h-4" />
-                Deposit
-              </button>
-              <button
-                onClick={() => router.push("/withdraw")}
-                className="flex items-center gap-2 text-sm transition-colors px-3 py-2 rounded-lg text-white hover:text-[#E8CFEA] hover:bg-white/10"
-              >
-                <Minus className="w-4 h-4" />
-                Withdraw
-              </button>
-              <button
-                onClick={() => router.push("/swap")}
-                className="flex items-center gap-2 text-sm transition-colors px-3 py-2 rounded-lg text-white hover:text-[#E8CFEA] hover:bg-white/10"
-              >
-                <ArrowLeftRight className="w-4 h-4" />
-                Swap
-              </button>
-              <button
-                onClick={() => router.push("/dashboard")}
-                className="flex items-center gap-2 text-sm transition-colors px-3 py-2 rounded-lg text-white hover:text-[#E8CFEA] hover:bg-white/10"
-              >
-                <BarChart3 className="w-4 h-4" />
-                Dashboard
-              </button>
-              <button
-                onClick={() => router.push("/kyc-test")}
-                className="flex items-center gap-2 text-sm transition-colors px-3 py-2 rounded-lg text-white hover:text-[#E8CFEA] hover:bg-white/10"
-              >
-                <User className="w-4 h-4" />
-                KYC Test
-              </button>
+              {pathname !== '/' && (
+                <div className="hidden md:flex items-center gap-3 text-sm">
+                  <button onClick={() => router.push('/dashboard')} className="px-3 py-2 rounded-md border border-white/15 bg-white/5 hover:bg-white/10 text-white/90">Dashboard</button>
+                  <button onClick={() => router.push('/deposit')} className="px-3 py-2 rounded-md border border-white/15 bg-white/5 hover:bg-white/10 text-white/90">Deposit</button>
+                  <button onClick={() => router.push('/swap')} className="px-3 py-2 rounded-md border border-white/15 bg-white/5 hover:bg-white/10 text-white/90">Swap</button>
+                  <button onClick={() => router.push('/withdraw')} className="px-3 py-2 rounded-md border border-white/15 bg-white/5 hover:bg-white/10 text-white/90">Withdraw</button>
+                  <button onClick={() => router.push('/onboarding')} className="px-3 py-2 rounded-md border border-white/15 bg-white/5 hover:bg-white/10 text-white/90">Onboarding</button>
+                  <button onClick={() => router.push('/kyc-test')} className="px-3 py-2 rounded-md border border-white/15 bg-white/5 hover:bg-white/10 text-white/90">KYC Test</button>
+                  <button onClick={() => router.push('/demo')} className="px-3 py-2 rounded-md border border-white/15 bg-white/5 hover:bg-white/10 text-white/90">Demo</button>
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <button
                   onClick={async () => {

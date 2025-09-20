@@ -13,7 +13,6 @@ import type React from "react"
 
 import { useMemo, useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import LiquidEther from "./liquid-ether"
 import { useEncryptedBalance } from "@/hooks/use-encrypted-balance"
 import { useAccount } from "wagmi"
 
@@ -58,27 +57,7 @@ export default function TsunamiDashboard() {
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden flex flex-col font-sans">
-      <div className="absolute inset-0 z-0">
-        <LiquidEther
-          colors={["#5227FF", "#FF9FFC", "#B19EEF"]}
-          mouseForce={0}
-          cursorSize={0}
-          isViscous={false}
-          viscous={30}
-          iterationsViscous={32}
-          iterationsPoisson={32}
-          resolution={0.5}
-          isBounce={false}
-          autoDemo={true}
-          autoSpeed={0.4}
-          autoIntensity={1.8}
-          takeoverDuration={0}
-          autoResumeDelay={0}
-          autoRampDuration={0.5}
-        />
-      </div>
-
-      <div className="pointer-events-none absolute inset-0 bg-black/20 z-1" />
+      {/* Liquid Ether background removed */}
 
       {/* Header / Identity */}
       <header className="sticky top-20 z-30 mt-20">
