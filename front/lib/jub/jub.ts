@@ -65,7 +65,13 @@ export const decryptPoint = (
 ): bigint[] => {
 	const privKey = formatPrivKeyForBabyJub(privateKey);
 
-	const c1x = mulPointEscalar(c1 as Point<bigint>, privKey);
-	const c1xInverse = [Fr.e(-c1x[0]), c1x[1]];
-	return addPoint(c2 as Point<bigint>, c1xInverse as Point<bigint>);
+	// Ensure the point is properly formatted for mulPointEscalar
+	const c1Point: Point<bigint> = [c1[0], c1[1]];
+	const c1x = mulPointEscalar(c1Point, privKey);
+	
+	// Calculate the inverse point by negating the x-coordinate
+	const c1xInverse: Point<bigint> = [Fr.e(-c1x[0]), c1x[1]];
+	const c2Point: Point<bigint> = [c2[0], c2[1]];
+	
+	return addPoint(c2Point, c1xInverse);
 };
