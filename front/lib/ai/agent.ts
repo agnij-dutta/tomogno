@@ -111,8 +111,8 @@ export async function runHederaAgent(messages: ChatMessage[]) {
         !lower.includes("status")) {
       return { intent: "initiate_kyc", params: {} };
     }
-    // Deposit patterns e.g., "deposit 0.1 avax"
-    const depMatch = lower.match(/deposit\s+(\d+\.?\d*)\s*(avax)?/);
+    // Deposit patterns e.g., "deposit 0.1 eth"
+    const depMatch = lower.match(/deposit\s+(\d+\.?\d*)\s*(eth)?/);
     if (depMatch) {
       return { intent: "deposit", params: { token: "0x0000000000000000000000000000000000000000", amount: depMatch[1], decimals: 18, denomination: 0 } };
     }
@@ -140,7 +140,7 @@ export async function runHederaAgent(messages: ChatMessage[]) {
     console.error("⚠️ Agent error or timeout:", err?.message || err);
     const fallback = {
       success: false,
-      message: `Agent failed: ${err?.message || err}. Please try a more direct instruction like 'deposit 0.1 AVAX' or 'check registration'.`,
+      message: `Agent failed: ${err?.message || err}. Please try a more direct instruction like 'deposit 0.1 ETH' or 'check registration'.`,
     };
     return { output: JSON.stringify(fallback), raw: fallback } as any;
   }

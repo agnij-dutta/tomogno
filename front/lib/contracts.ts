@@ -1,6 +1,6 @@
 // Contract addresses and ABIs
 export const REGISTRAR_CONTRACT = {
-    address: '0x492319168EBaBEf55D93092DCFB6a43AAC4A1f19' as const,
+    address: '0x200C0a7C5B49871e41789F5E585Ddb3359e13e8B' as const,
     abi: [
       {
         "inputs": [
@@ -87,7 +87,7 @@ export const REGISTRAR_CONTRACT = {
   
   
   export const EERC_CONTRACT = {
-    address: '0x7F7Dd0A6e5aB206C2cb56C5FF1BE4daf9ADb5a23' as const,
+    address: '0xD5afc45c69644CBd63f362D64B4198a7d81e53C7' as const,
     abi: [
       {
         "inputs": [
@@ -1374,7 +1374,7 @@ export const REGISTRAR_CONTRACT = {
   } as const;
   
   export const ERC20_TEST = {
-    address: '0x81FeDE901c8415A412f3407f6cEDBCDDC89D888c' as const,
+    address: '0xd7f834eF5d3A089e3Ec3A9E08EA035926D6A0bA1' as const,
     abi: [
       {
         "inputs": [

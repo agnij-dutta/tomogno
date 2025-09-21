@@ -1,12 +1,12 @@
 import { useAccount, useChainId, usePublicClient, useSwitchChain, useWriteContract, useReadContract } from "wagmi";
-import { avalancheFuji } from "wagmi/chains";
+import { sepolia } from "wagmi/chains";
 import { REGISTRAR_CONTRACT, EERC_CONTRACT } from "@/lib/contracts";
 import { parseUnits } from "viem";
 import { processPoseidonEncryption } from "@/lib/poseidon/poseidon";
 import { useRegistration } from "@/hooks/use-registration";
 import { useRegistrationStatus } from "@/hooks/use-registration-status";
 import { useEncryptedBalance } from "@/hooks/use-encrypted-balance";
-import { useNativeAVAX } from "@/hooks/use-native-avax";
+import { useNativeETH } from "@/hooks/use-native-eth";
 
 // Types for intent execution
 export type IntentResult = {
@@ -86,9 +86,9 @@ export class IntentExecutor {
   }
 
   private async ensureCorrectChain(): Promise<boolean> {
-    if (this.hooks.chainId !== avalancheFuji.id) {
-      console.log("Switching to Avalanche Fuji network...");
-      await this.hooks.switchChain({ chainId: avalancheFuji.id });
+    if (this.hooks.chainId !== sepolia.id) {
+      console.log("Switching to Ethereum Sepolia network...");
+      await this.hooks.switchChain({ chainId: sepolia.id });
       await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for chain switch
       return true;
     }
@@ -173,7 +173,7 @@ export class IntentExecutor {
         abi: EERC_CONTRACT.abi,
         functionName: "deposit",
         args: [amountWei, "0x0000000000000000000000000000000000000000", amountPCT],
-        chainId: avalancheFuji.id,
+        chainId: sepolia.id,
         value: amountWei,
       });
 
@@ -186,7 +186,7 @@ export class IntentExecutor {
 
       return {
         success: true,
-        message: `Deposit of ${amount} AVAX confirmed in block ${receipt.blockNumber}`,
+        message: `Deposit of ${amount} ETH confirmed in block ${receipt.blockNumber}`,
         txHash,
         data: { amount, token, blockNumber: receipt.blockNumber.toString() }
       };
@@ -304,7 +304,7 @@ export class IntentExecutor {
               message: `Registration check failed: Registrar not found on this network or ABI mismatch.\n\n` +
                        `Static registrar: ${REGISTRAR_CONTRACT.address}\n` +
                        `Resolved registrar (from EERC): ${registrarAddr}\n` +
-                       `ChainId: ${this.hooks.chainId}. Ensure Avalanche Fuji is selected and contracts are deployed.`,
+                       `ChainId: ${this.hooks.chainId}. Ensure Ethereum Sepolia is selected and contracts are deployed.`,
             };
           }
         }
@@ -343,11 +343,11 @@ export class IntentExecutor {
 
       return {
         success: true,
-        message: `Public AVAX balance: ${balanceEth} AVAX`,
+        message: `Public ETH balance: ${balanceEth} ETH`,
         data: { 
           balance: balanceEth, 
           balanceWei: balance.toString(), 
-          symbol: "AVAX",
+          symbol: "ETH",
           address: this.hooks.address 
         }
       };
@@ -633,7 +633,7 @@ export class IntentExecutor {
     const { type = "all", limit = 10 } = params;
     
     const mockHistory = [
-      { type: "deposit", amount: "1.5", token: "AVAX", timestamp: new Date(Date.now() - 86400000).toISOString(), txHash: "0xabc..." },
+      { type: "deposit", amount: "1.5", token: "ETH", timestamp: new Date(Date.now() - 86400000).toISOString(), txHash: "0xabc..." },
       { type: "swap", from: "eUSDC", to: "eDAI", amount: "100", timestamp: new Date(Date.now() - 172800000).toISOString(), txHash: "0xdef..." },
       { type: "withdraw", amount: "0.5", token: "eETH", recipient: "0x123...", timestamp: new Date(Date.now() - 259200000).toISOString(), txHash: "0xghi..." },
     ].filter(tx => type === "all" || tx.type === type).slice(0, limit);

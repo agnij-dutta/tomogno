@@ -257,25 +257,37 @@ export async function getDecryptedBalance(
 	privateKey: bigint,
     amountPCTs: any[],
     balancePCT: bigint[],
-    encryptedBalance: bigint[][]
+    encryptedBalance: any
 ): Promise<bigint> {
-    console.log("Before encryptedBalance: ")
-    // First, try to decrypt the EGCT (main encrypted balance)
-    const c1: [bigint, bigint] = [encryptedBalance[0][0], encryptedBalance[0][1]];
-    const c2: [bigint, bigint] = [encryptedBalance[1][0], encryptedBalance[1][1]];
-    console.log(c1)
-    console.log(c2)
-    console.log(1)
+    console.log("Before encryptedBalance: ", encryptedBalance);
+    
+    // The encrypted balance structure is: [eGCT, nonce, amountPCTs, balancePCT, transactionIndex]
+    // where eGCT is: { c1: { x: bigint, y: bigint }, c2: { x: bigint, y: bigint } }
+    
+    if (!encryptedBalance || !encryptedBalance[0]) {
+        console.log("No encrypted balance data available");
+        return BigInt(0);
+    }
+    
+    const eGCT = encryptedBalance[0];
+    console.log("eGCT structure:", eGCT);
+    
+    // Extract c1 and c2 from the eGCT structure
+    const c1: [bigint, bigint] = [eGCT.c1.x, eGCT.c1.y];
+    const c2: [bigint, bigint] = [eGCT.c2.x, eGCT.c2.y];
+    console.log("c1:", c1);
+    console.log("c2:", c2);
+    
     // Check if EGCT is empty (all zeros)
     const isEGCTEmpty = c1[0] === BigInt(0) && c1[1] === BigInt(0) && c2[0] === BigInt(0) && c2[1] === BigInt(0);
-    console.log(2)
+    console.log("isEGCTEmpty:", isEGCTEmpty);
+    
     if (!isEGCTEmpty) {
         // Decrypt EGCT - this is the primary balance
         const egctBalance = decryptEGCTBalance(privateKey, c1, c2);
         console.log("🔐 EGCT Balance found:", egctBalance.toString());
         return egctBalance;
     }
-    console.log(3)
     // If EGCT is empty, fall back to PCT decryption
     let totalBalance = BigInt(0);
 

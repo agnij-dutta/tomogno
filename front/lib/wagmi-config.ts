@@ -1,18 +1,17 @@
 'use client'
 
 import { http, createConfig } from 'wagmi'
-import { mainnet, sepolia, avalancheFuji } from 'wagmi/chains'
+import { mainnet, sepolia} from 'wagmi/chains'
 import { injected } from 'wagmi/connectors'
 
 export const config = createConfig({
-  chains: [mainnet, sepolia, avalancheFuji],
+  chains: [mainnet, sepolia],
   connectors: [
     injected(),
   ],
   transports: {
     [mainnet.id]: http(),
     [sepolia.id]: http(),
-    [avalancheFuji.id]: http(),
   },
 })
 

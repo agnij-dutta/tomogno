@@ -2,7 +2,7 @@
 
 import { useReadContract, useChainId } from 'wagmi'
 import { REGISTRAR_CONTRACT } from '../lib/contracts'
-import { avalancheFuji } from 'wagmi/chains'
+import { sepolia } from 'wagmi/chains'
 
 export function useRegistrationStatus(userAddress?: `0x${string}`) {
   const chainId = useChainId()
@@ -11,7 +11,7 @@ export function useRegistrationStatus(userAddress?: `0x${string}`) {
     abi: REGISTRAR_CONTRACT.abi,
     functionName: 'isUserRegistered',
     args: userAddress ? [userAddress] : undefined,
-    chainId: avalancheFuji.id,
+    chainId: sepolia.id,
     query: { enabled: !!userAddress },
   })
 
@@ -22,8 +22,8 @@ export function useRegistrationStatus(userAddress?: `0x${string}`) {
     error,
     refetch,
     currentChain: chainId,
-    contractChain: avalancheFuji.id,
-    isOnCorrectChain: chainId === avalancheFuji.id,
+    contractChain: sepolia.id,
+    isOnCorrectChain: chainId === sepolia.id,
   }
 }
 

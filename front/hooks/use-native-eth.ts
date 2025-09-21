@@ -1,14 +1,14 @@
 "use client";
 
 import { useAccount, useBalance } from "wagmi";
-import { avalancheFuji } from "wagmi/chains";
+import { sepolia } from "wagmi/chains";
 
-export function useNativeAVAX() {
+export function useNativeETH() {
   const { address } = useAccount();
   
   const { data: balance, isLoading, error } = useBalance({
     address,
-    chainId: avalancheFuji.id,
+    chainId: sepolia.id,
   });
 
   return {
@@ -16,7 +16,7 @@ export function useNativeAVAX() {
     balanceRaw: balance?.value || 0n,
     isLoading,
     error,
-    symbol: "AVAX",
+    symbol: "ETH",
     decimals: 18,
   };
 }

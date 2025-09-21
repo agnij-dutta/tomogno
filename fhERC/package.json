@@ -63,7 +63,7 @@
     "@solarity/hardhat-zkit": "^0.5.17",
     "@zk-kit/baby-jubjub": "^1.0.3",
     "@zk-kit/utils": "^1.4.1",
-    "dotenv": "^16.3.1",
+    "dotenv": "^16.6.1",
     "maci-crypto": "^2.5.0",
     "poseidon-lite": "^0.3.0",
     "snarkjs": "^0.7.5"
