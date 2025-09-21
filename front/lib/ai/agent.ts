@@ -78,7 +78,7 @@ export async function runHederaAgent(messages: ChatMessage[]) {
   ]);
 
   const agent = createToolCallingAgent({ llm, tools, prompt });
-  const agentExecutor = new AgentExecutor({ agent, tools, maxIterations: 3, returnIntermediateSteps: false });
+  const agentExecutor = new AgentExecutor({ agent, tools, maxIterations: 5, returnIntermediateSteps: false });
 
   // Prepare chat history string for context (excluding the latest user message)
   const last = messages[messages.length - 1];
@@ -94,8 +94,60 @@ export async function runHederaAgent(messages: ChatMessage[]) {
   const fastIntent = (() => {
     const lower = input.toLowerCase();
     // Check registration
-    if (lower.includes("check registration") || lower.includes("registration status")) {
+    if (
+      lower.includes("check registration") ||
+      lower.includes("registration status") ||
+      lower.includes("check my registration") ||
+      /\b(am i|am i'm)?\s*registered\b/.test(lower) ||
+      /\b(check|see|view)\s+(if\s+)?(i'm|i am|my)\s+registered\b/.test(lower)
+    ) {
       return { intent: "check_registration", params: {} };
+    }
+    // Balances
+    if (/encrypted\s+balance/.test(lower)) {
+      return { intent: "decrypt_balance", params: {} };
+    }
+    if (
+      /\b(balance|what'?s my balance|whats my balance|my balance)\b/.test(lower) ||
+      /\b(avax|eth|usdc|dai)\s+balance\b/.test(lower)
+    ) {
+      // Try to extract token symbol if provided
+      const tokenMatch = lower.match(/\b(avax|eth|usdc|dai|eusdc|edai|eeth)\b/);
+      const token = tokenMatch ? tokenMatch[1] : undefined;
+      return { intent: "get_public_balance", params: { token } };
+    }
+    // Swap e.g., "swap 100 eUSDC to eDAI"
+    const swapMatch = lower.match(/swap\s+(\d+\.?\d*)\s+([a-z0-9]+)\s+(?:to|->)\s+([a-z0-9]+)/i);
+    if (swapMatch) {
+      return {
+        intent: "get_swap_quote",
+        params: { amount: swapMatch[1], fromToken: swapMatch[2], toToken: swapMatch[3], slippage: 0.5 },
+      };
+    }
+    // Withdraw e.g., "withdraw 0.5 eETH"
+    const wdMatch = lower.match(/withdraw\s+(\d+\.?\d*)\s+([a-z0-9]+)/i);
+    if (wdMatch) {
+      return { intent: "check_withdraw_compliance", params: { amount: wdMatch[1], token: wdMatch[2] } };
+    }
+    // Dashboard
+    if (/\b(show|open)?\s*dashboard\b/.test(lower)) {
+      return { intent: "show_dashboard", params: { showBalances: true } };
+    }
+    // Compliance status
+    if (/\b(compliance status|am i compliant|check compliance)\b/.test(lower)) {
+      return { intent: "check_compliance", params: {} };
+    }
+    // KYC status
+    if (/\b(kyc status|am i verified|check kyc)\b/.test(lower)) {
+      return { intent: "check_kyc_status", params: {} };
+    }
+    // Supported tokens
+    if (/\b(supported tokens|list tokens|what can i trade)\b/.test(lower)) {
+      return { intent: "get_supported_tokens", params: {} };
+    }
+    // Transaction history
+    if (/\b(history|transactions|recent activity)\b/.test(lower)) {
+      return { intent: "get_transaction_history", params: { type: "all", limit: 10 } };
     }
     // KYC initiation phrases
     if (
@@ -126,7 +178,7 @@ export async function runHederaAgent(messages: ChatMessage[]) {
   }
 
   // Run the agent with a timeout to prevent hanging
-  const timeoutMs = 12000;
+  const timeoutMs = 30000;
   const agentPromise = agentExecutor.invoke({ input, chat_history: history });
   const timer = new Promise((_, reject) => setTimeout(() => reject(new Error("Agent timed out")), timeoutMs));
 
