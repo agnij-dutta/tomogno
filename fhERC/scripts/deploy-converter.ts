@@ -1,6 +1,6 @@
 import { ethers } from "hardhat";
 import { deployLibrary, deployVerifiers } from "../test/helpers";
-import { EncryptedERC__factory } from "../typechain-types";
+import { UniversalEncryptedERC__factory } from "../typechain-types";
 import { DECIMALS } from "./constants";
 import * as fs from "fs";
 import * as path from "path";
@@ -28,7 +28,7 @@ const main = async () => {
 	await registrar.waitForDeployment();
 
 	// deploy eERC20
-	const encryptedERCFactory = new EncryptedERC__factory({
+	const encryptedERCFactory = new UniversalEncryptedERC__factory({
 		"contracts/libraries/BabyJubJub.sol:BabyJubJub": babyJubJub,
 	});
 	const encryptedERC_ = await encryptedERCFactory.connect(deployer).deploy({

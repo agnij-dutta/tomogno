@@ -7,6 +7,7 @@ import type {
 } from "../generated-types/zkit";
 import { processPoseidonEncryption } from "../src";
 import { poseidon3 } from "poseidon-lite";
+import { decryptPoint } from "../src/jub/jub";
 import {
 	type FeeERC20,
 	FeeERC20__factory,
@@ -17,8 +18,8 @@ import type {
 	BurnProofStruct,
 	UniversalEncryptedERC,
 	MintProofStruct,
-} from "../typechain-types/contracts/UniversalEncryptedERC";
-import type { Registrar } from "../typechain-types/contracts/Registrar";
+} from "../typechain-types/contracts/core/UniversalEncryptedERC";
+import type { Registrar } from "../typechain-types/contracts/core/Registrar";
 import {
 	UniversalEncryptedERC__factory,
 	Registrar__factory,
@@ -912,7 +913,7 @@ describe("EncryptedERC - Converter", () => {
 						.connect(user.signer)
 						.deposit(depositAmount * 10n ** 6n, erc20s[0].target, [...ciphertext, ...authKey, nonce]);
 					const receipt = await depositTx.wait();
-					console.log("Deposit transaction successful:", receipt.status);
+					console.log("Deposit transaction successful:", receipt?.status);
 					
 					// Get the tokenId for this token
 					tokenId = Number(await encryptedERC.tokenIds(erc20s[0].target));
@@ -932,8 +933,10 @@ describe("EncryptedERC - Converter", () => {
 				console.log("eGCT:", balance.eGCT);
 				console.log("amountPCTs length:", balance.amountPCTs.length);
 				const userEncryptedBalance = [...balance.eGCT.c1, ...balance.eGCT.c2];
+				console.log("Debug - Using encrypted balance from:", "balance.eGCT");
 
 				// Calculate the current balance
+				console.log("Debug - About to call getDecryptedBalance");
 				const totalBalance = await getDecryptedBalance(
 					user.privateKey,
 					balance.amountPCTs,
@@ -943,7 +946,30 @@ describe("EncryptedERC - Converter", () => {
 
 				// Get the auditor public key
 				const currentAuditorPublicKey = await encryptedERC.auditorPublicKey();
+				// Debug: Check the values being passed to withdraw
+				console.log("Debug - userEncryptedBalance:", userEncryptedBalance);
+				console.log("Debug - totalBalance:", totalBalance);
+				console.log("Debug - balance.eGCT.c1:", balance.eGCT.c1);
+				console.log("Debug - getDecryptedBalance completed, totalBalance:", totalBalance);
+				console.log("Debug - balance.eGCT.c2:", balance.eGCT.c2);
+				
+				// Debug: Try to decrypt the userEncryptedBalance manually
+				const manualDecrypt = decryptPoint(
+					user.privateKey,
+					[userEncryptedBalance[0], userEncryptedBalance[1]],
+					[userEncryptedBalance[2], userEncryptedBalance[3]]
+				);
+				console.log("Debug - manualDecrypt:", manualDecrypt);
+				// Try using the decrypted balance from the encrypted balance instead of the calculated total
+				const actualDecryptedBalance = manualDecrypt;
+				const actualTotalBalance = actualDecryptedBalance; // Use the actual decrypted balance
 
+				// Try using the scaled balance instead of the calculated total
+				const scaledBalance = totalBalance * 10n ** 4n; // Scale from 6 to 10 decimals
+				console.log("Debug - scaledBalance:", scaledBalance);
+				console.log("Debug - About to call getDecryptedBalance");
+				console.log("Debug - totalBalance:", totalBalance);
+				console.log("Debug - scaledBalance calculation:", totalBalance, "* 10^4 =", totalBalance * 10n ** 4n);
 				const { proof, userBalancePCT } = await withdraw(
 					withdrawAmount,
 					user,
@@ -989,7 +1015,7 @@ describe("EncryptedERC - Converter", () => {
 						.connect(user.signer)
 						.deposit(depositAmount * 10n ** 6n, erc20s[0].target, [...ciphertext, ...authKey, nonce]);
 					const receipt = await depositTx.wait();
-					console.log("Deposit transaction successful:", receipt.status);
+					console.log("Deposit transaction successful:", receipt?.status);
 					
 					// Get the tokenId for this token
 					tokenId = Number(await encryptedERC.tokenIds(erc20s[0].target));
@@ -1115,10 +1141,10 @@ describe("EncryptedERC - Converter", () => {
 				const depositAmount = 10000n; // Deposit 10000 tokens
 				
 				// Mint tokens to the user
-				await erc20s[0].connect(owner).mint(user.signer.address, depositAmount * 10n ** 6n);
+				await erc20s[1].connect(owner).mint(user.signer.address, depositAmount * 10n ** 10n);
 				
 				// Approve the deposit
-				await erc20s[0].connect(user.signer).approve(encryptedERC.target, depositAmount * 10n ** 6n);
+				await erc20s[1].connect(user.signer).approve(encryptedERC.target, depositAmount * 10n ** 10n);
 				
 				// Create encrypted value for deposit
 				const { ciphertext, authKey, nonce } = processPoseidonEncryption([depositAmount], user.publicKey);
@@ -1136,7 +1162,7 @@ describe("EncryptedERC - Converter", () => {
 						.connect(user.signer)
 						.deposit(depositAmount * 10n ** 10n, erc20s[1].target, [...ciphertext, ...authKey, nonce]);
 					const receipt = await depositTx.wait();
-					console.log("Deposit transaction successful:", receipt.status);
+					console.log("Deposit transaction successful:", receipt?.status);
 					
 					// Get the tokenId for this token
 					tokenId = Number(await encryptedERC.tokenIds(erc20s[1].target));
@@ -1213,7 +1239,7 @@ describe("EncryptedERC - Converter", () => {
 						.connect(user.signer)
 						.deposit(depositAmount * 10n ** 6n, erc20s[0].target, [...ciphertext, ...authKey, nonce]);
 					const receipt = await depositTx.wait();
-					console.log("Deposit transaction successful:", receipt.status);
+					console.log("Deposit transaction successful:", receipt?.status);
 					
 					// Get the tokenId for this token
 					tokenId = Number(await encryptedERC.tokenIds(erc20s[0].target));
@@ -1309,7 +1335,7 @@ describe("EncryptedERC - Converter", () => {
 				const depositAmount = 10000n; // Deposit 10000 tokens
 				
 				// Mint tokens to the user
-				await erc20s[0].connect(owner).mint(user.signer.address, depositAmount * 10n ** 6n);
+				await erc20s[2].connect(owner).mint(user.signer.address, depositAmount * 10n ** 18n);
 				
 				// Approve the deposit
 				await erc20s[2].connect(user.signer).approve(encryptedERC.target, depositAmount * 10n ** 18n);
@@ -1330,7 +1356,7 @@ describe("EncryptedERC - Converter", () => {
 						.connect(user.signer)
 						.deposit(depositAmount * 10n ** 18n, erc20s[2].target, [...ciphertext, ...authKey, nonce]);
 					const receipt = await depositTx.wait();
-					console.log("Deposit transaction successful:", receipt.status);
+					console.log("Deposit transaction successful:", receipt?.status);
 					
 					// Get the tokenId for this token
 					tokenId = Number(await encryptedERC.tokenIds(erc20s[2].target));
@@ -1416,7 +1442,7 @@ describe("EncryptedERC - Converter", () => {
 						.connect(user.signer)
 						.deposit(depositAmount * 10n ** 6n, erc20s[0].target, [...ciphertext, ...authKey, nonce]);
 					const receipt = await depositTx.wait();
-					console.log("Deposit transaction successful:", receipt.status);
+					console.log("Deposit transaction successful:", receipt?.status);
 					
 					// Get the tokenId for this token
 					tokenId = Number(await encryptedERC.tokenIds(erc20s[0].target));
@@ -1493,7 +1519,7 @@ describe("EncryptedERC - Converter", () => {
 						.connect(user.signer)
 						.deposit(depositAmount * 10n ** 6n, erc20s[0].target, [...ciphertext, ...authKey, nonce]);
 					const receipt = await depositTx.wait();
-					console.log("Deposit transaction successful:", receipt.status);
+					console.log("Deposit transaction successful:", receipt?.status);
 					
 					// Get the tokenId for this token
 					tokenId = Number(await encryptedERC.tokenIds(erc20s[0].target));

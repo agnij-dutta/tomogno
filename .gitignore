@@ -116,6 +116,11 @@ pids/
 *.seed
 *.pid.lock
 
+# FH-ERC test artifacts
+fhERC/test/coverage/
+fhERC/test/.nyc_output/
+fhERC/deployments/
+
 # ========================================
 # Database & Storage
 # ========================================
