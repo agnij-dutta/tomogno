@@ -76,6 +76,13 @@ export default function WithdrawPage() {
   const [showTokenModal, setShowTokenModal] = useState(false)
   const [tokenQuery, setTokenQuery] = useState("")
 
+  // Keep selected token in sync with latest decrypted balance
+  useEffect(() => {
+    if (tokens[0] && (selectedToken.symbol !== tokens[0].symbol || selectedToken.balance !== tokens[0].balance)) {
+      setSelectedToken(tokens[0])
+    }
+  }, [tokens, decryptedBalance])
+
   const [recipientMode, setRecipientMode] = useState<"default" | "custom">("default")
   const [defaultRecipient, setDefaultRecipient] = useState<string>(address || "0x...")
   const [customRecipient, setCustomRecipient] = useState<string>("")
@@ -330,7 +337,7 @@ export default function WithdrawPage() {
                           Loading balance...
                         </span>
                       ) : (
-                        `You have ${selectedToken.balance.toFixed(4)} ${selectedToken.symbol} available`
+                        `You have ${selectedToken.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 10 })} ${selectedToken.symbol} available`
                       )}
                     </div>
                     <div className="text-sm text-white">

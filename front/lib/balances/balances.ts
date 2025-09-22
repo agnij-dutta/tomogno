@@ -303,7 +303,14 @@ export async function getDecryptedBalance(
     if (!isEGCTEmpty) {
         const egctBalance = decryptEGCTBalance(privateKey, c1, c2);
         console.log("🔐 EGCT Balance found:", egctBalance.toString());
-        return egctBalance;
+        
+        // Scale from contract's internal DECIMALS (10) to ETH units (18 decimals)
+        // Contract stores values scaled down from 18 to 10 decimals
+        // So to display, we need to scale back up: balance * 10^(18-10) = balance * 10^8
+        const scaledBalance = egctBalance * (10n ** 8n);
+        console.log("🔐 Scaled balance for display:", scaledBalance.toString());
+        
+        return scaledBalance;
     }
 
     let totalBalance = 0n;
@@ -312,7 +319,9 @@ export async function getDecryptedBalance(
         console.log("Before balancePCT (local): ", balancePCTLocal)
         try {
             const decryptedBalancePCT = await decryptPCT(privateKey, balancePCTLocal.map((x) => BigInt(x)) as any);
-            totalBalance += BigInt(decryptedBalancePCT[0]);
+            // Scale PCT balance from internal DECIMALS (10) to ETH units (18)
+            const scaledPCTBalance = BigInt(decryptedBalancePCT[0]) * (10n ** 8n);
+            totalBalance += scaledPCTBalance;
         } catch (error) {
             console.log("Note: Balance PCT is empty or couldn't be decrypted");
         }
@@ -324,7 +333,9 @@ export async function getDecryptedBalance(
         if (pctArr && pctArr.some((e: any) => BigInt(e) !== 0n)) {
             try {
                 const decryptedAmountPCT = await decryptPCT(privateKey, pctArr.map((x: any) => BigInt(x)) as any);
-                totalBalance += BigInt(decryptedAmountPCT[0]);
+                // Scale amount PCT from internal DECIMALS (10) to ETH units (18)
+                const scaledAmountPCT = BigInt(decryptedAmountPCT[0]) * (10n ** 8n);
+                totalBalance += scaledAmountPCT;
             } catch (error) {
                 console.log("Note: Some amount PCT couldn't be decrypted");
             }

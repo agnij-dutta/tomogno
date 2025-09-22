@@ -100,7 +100,10 @@ export function useEncryptedBalance() {
           
           const balance = await getDecryptedBalance(privateKey, [], [], ebLocal as any);
           console.log('🔍 Decrypted balance result:', balance.toString());
-          setDecryptedBalance(balance.toString());
+          
+          // Convert from BigInt (wei) to ETH string for display
+          const balanceInEth = Number(balance) / 1e18;
+          setDecryptedBalance(balanceInEth.toString());
         } catch (err) {
           console.error('Error decrypting balance:', err);
           setDecryptError(err instanceof Error ? err.message : 'Failed to decrypt balance');
@@ -114,8 +117,8 @@ export function useEncryptedBalance() {
   }, [encryptedBalance, address, signMessageAsync]);
 
   const formattedEncryptedBalance = decryptedBalance ? 
-    `${parseFloat(decryptedBalance).toFixed(4)} eETH` : 
-    '0.0000 eETH';
+    `${Number(decryptedBalance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 10 })} eETH` : 
+    '0.00000000 eETH';
 
   return {
     encryptedBalance,
