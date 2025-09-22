@@ -1,7 +1,8 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { useAccount } from "wagmi"
 import {
   ChevronDown,
   Info,
@@ -9,33 +10,64 @@ import {
   AlertTriangle,
   Search,
   X,
-  Copy,
-  Upload,
-  Shield,
-  FileCheck,
   Loader2,
   ArrowRight,
   Wallet,
   ArrowLeft,
+  Shield,
 } from "lucide-react"
+import { useWithdraw } from "../hooks/use-withdraw"
+import { useEncryptedBalance } from "../hooks/use-encrypted-balance"
+import { formatEther, parseEther } from "viem"
 
 type Token = {
   symbol: string
   name: string
   balance: number
   priceUsd: number
+  tokenId: bigint
+  tokenAddress: string
 }
 
 export default function WithdrawPage() {
   const router = useRouter()
-  // Mock tokens, balances, and prices (frontend only)
+  const { address } = useAccount()
+  
+  // Withdraw hook integration
+  const {
+    isGeneratingProof,
+    proofError,
+    generatedProof,
+    isPending,
+    isConfirming,
+    isConfirmed,
+    error: contractError,
+    txHash,
+    generateWithdrawProof,
+    withdraw,
+    isReady,
+  } = useWithdraw()
+
+  // Use the working encrypted balance hook
+  const {
+    decryptedBalance,
+    isLoading: isLoadingBalance,
+    error: balanceError,
+  } = useEncryptedBalance()
+
+  // Available tokens (currently only eETH for native token)
   const tokens = useMemo<Token[]>(
     () => [
-      { symbol: "eUSDC", name: "Encrypted USD Coin", balance: 1250, priceUsd: 1 },
-      { symbol: "eDAI", name: "Encrypted DAI", balance: 640, priceUsd: 1 },
-      { symbol: "eETH", name: "Encrypted ETH", balance: 0.75, priceUsd: 1600 },
+      { 
+        symbol: "eETH", 
+        name: "Encrypted ETH", 
+        balance: decryptedBalance ? parseFloat(decryptedBalance) : 0, 
+        priceUsd: 1600,
+        tokenId: 0n, // Native token has ID 0
+        tokenAddress: "0x0000000000000000000000000000000000000000"
+      },
     ],
-    [],
+    [decryptedBalance],
   )
 
   // UI State
@@ -45,21 +77,22 @@ export default function WithdrawPage() {
   const [tokenQuery, setTokenQuery] = useState("")
 
   const [recipientMode, setRecipientMode] = useState<"default" | "custom">("default")
-  const [defaultRecipient, setDefaultRecipient] = useState<string>("0xBEEF...c0ffee")
+  const [defaultRecipient, setDefaultRecipient] = useState<string>(address || "0x...")
   const [customRecipient, setCustomRecipient] = useState<string>("")
   const [showAddressBook, setShowAddressBook] = useState(false)
 
-  // Compliance / Proof (frontend placeholders)
-  const THRESHOLD_USD = 5000
-  const [hasComplianceAttestation, setHasComplianceAttestation] = useState<boolean>(true) // global-ready badge
-  const [generatingProof, setGeneratingProof] = useState(false)
-  const [proofReady, setProofReady] = useState(false)
-  const [proofString, setProofString] = useState<string>("")
-  const [proofCopied, setProofCopied] = useState(false)
 
   // Confirmation & Success
-  const [confirming, setConfirming] = useState<false | "verify" | "execute">(false)
+  const [confirming, setConfirming] = useState<false | "execute">(false)
   const [successOpen, setSuccessOpen] = useState(false)
+  const [withdrawError, setWithdrawError] = useState<string | null>(null)
+
+  // Update default recipient when address changes
+  useEffect(() => {
+    if (address) {
+      setDefaultRecipient(address)
+    }
+  }, [address])
 
   // Derived values
   const numericAmount = useMemo(() => Number.parseFloat(amount.replace(/,/g, "")) || 0, [amount])
@@ -68,7 +101,6 @@ export default function WithdrawPage() {
   const isPositive = numericAmount > 0
   const recipient = recipientMode === "default" ? defaultRecipient : customRecipient || "0x..."
 
-  const complianceRequired = amountUsd >= THRESHOLD_USD
 
   const filteredTokens = useMemo(() => {
     const q = tokenQuery.trim().toLowerCase()
@@ -77,7 +109,14 @@ export default function WithdrawPage() {
   }, [tokenQuery, tokens])
 
   const canConfirm =
-    isPositive && !insufficient && !!recipient && recipient.startsWith("0x") && (!complianceRequired || proofReady)
+    isPositive && 
+    !insufficient && 
+    !!recipient && 
+    recipient.startsWith("0x") && 
+    isReady &&
+    !isPending &&
+    !isConfirming &&
+    !isLoadingBalance
 
   function onSelectToken(t: Token) {
     setSelectedToken(t)
@@ -88,33 +127,61 @@ export default function WithdrawPage() {
     setAmount(String(selectedToken.balance))
   }
 
-  function startProofGeneration() {
-    setGeneratingProof(true)
-    setProofReady(false)
-    setProofCopied(false)
-    setProofString("")
-    setTimeout(() => {
-      // mock proof building
-      setProofString(`zk-proof-${Date.now().toString(36)}`)
-      setGeneratingProof(false)
-      setProofReady(true)
-    }, 1400)
-  }
 
-  function copyProof() {
-    navigator.clipboard.writeText(proofString || "zk-proof-placeholder")
-    setProofCopied(true)
-    setTimeout(() => setProofCopied(false), 1500)
-  }
 
-  function onConfirmWithdraw() {
-    // Two-step confirmation flow (frontend only)
-    setConfirming("verify")
-    setTimeout(() => setConfirming("execute"), 1200)
-    setTimeout(() => {
+  async function onConfirmWithdraw() {
+    if (!isPositive || !recipient.startsWith("0x")) {
+      setWithdrawError("Please enter a valid amount and recipient address")
+      return
+    }
+
+    try {
+      setWithdrawError(null)
+      setConfirming("execute")
+      
+      const withdrawParams = {
+        tokenId: selectedToken.tokenId,
+        amount: parseEther(amount),
+        recipient: recipient,
+      }
+
+      await withdraw(withdrawParams)
+      
       setConfirming(false)
       setSuccessOpen(true)
-    }, 2400)
+      
+      // Reset form
+      setAmount("")
+      
+    } catch (error) {
+      console.error('Withdraw failed:', error)
+      setWithdrawError(error instanceof Error ? error.message : 'Withdraw failed')
+      setConfirming(false)
+    }
+  }
+
+  // Show connection prompt if not ready
+  if (!address) {
+    return (
+      <div className="relative min-h-screen w-full overflow-hidden flex flex-col items-center justify-center">
+        <div className="text-center text-white">
+          <h2 className="text-2xl font-bold mb-4">Connect Your Wallet</h2>
+          <p className="text-gray-400">Please connect your wallet to withdraw tokens</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isReady) {
+    return (
+      <div className="relative min-h-screen w-full overflow-hidden flex flex-col items-center justify-center">
+        <div className="text-center text-white">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
+          <h2 className="text-2xl font-bold mb-4">Initializing...</h2>
+          <p className="text-gray-400">Setting up withdraw functionality</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -255,7 +322,14 @@ export default function WithdrawPage() {
 
                   <div className="mt-3 flex items-center justify-between">
                     <div className="text-sm text-white">
-                      You have {selectedToken.balance} {selectedToken.symbol} available
+                      {isLoadingBalance ? (
+                        <span className="flex items-center gap-2">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Loading balance...
+                        </span>
+                      ) : (
+                        `You have ${selectedToken.balance.toFixed(4)} ${selectedToken.symbol} available`
+                      )}
                     </div>
                     <div className="text-sm text-white">
                       ≈ ${amountUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}
@@ -339,123 +413,8 @@ export default function WithdrawPage() {
                 </section>
               </div>
 
-              {/* Right column: Compliance + Proof + Summary + CTA */}
+              {/* Right column: Summary + CTA */}
               <div className="space-y-6">
-                {/* Compliance Check Module */}
-                <section
-                  className="rounded-2xl backdrop-blur-xl border border-white/15 p-5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06),0_10px_28px_rgba(0,0,0,0.45)]"
-                  style={{ background: "rgba(255,255,255,0.08)" }}
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="text-white text-base font-semibold">Compliance Check</div>
-                    {hasComplianceAttestation ? (
-                      <span className="inline-flex items-center gap-1.5 text-emerald-300 text-xs px-2.5 py-1.5 rounded-md bg-emerald-500/15 border border-emerald-500/40">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Ready
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5 text-yellow-200 text-xs px-2.5 py-1.5 rounded-md bg-yellow-500/15 border border-yellow-500/40">
-                        <AlertTriangle className="w-3.5 h-3.5" /> Action needed
-                      </span>
-                    )}
-                  </div>
-
-                  {Number.isFinite(amountUsd) && isPositive ? (
-                    complianceRequired ? (
-                      <div className="flex items-start gap-3 bg-yellow-500/15 border border-yellow-500/40 text-yellow-100 px-4 py-3 rounded-xl">
-                        <AlertTriangle className="w-5 h-5 mt-0.5" />
-                        <div className="space-y-1">
-                          <div className="text-sm font-semibold">zk-Attestation required</div>
-                          <div className="text-xs opacity-90">
-                            This withdrawal is above ${THRESHOLD_USD.toLocaleString()}. Provide a zk-compliance proof to
-                            proceed.
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-start gap-3 bg-emerald-500/15 border border-emerald-500/40 text-emerald-100 px-4 py-3 rounded-xl">
-                        <CheckCircle2 className="w-5 h-5 mt-0.5" />
-                        <div className="space-y-1">
-                          <div className="text-sm font-semibold">No attestation required</div>
-                          <div className="text-xs opacity-90">
-                            This amount is below ${THRESHOLD_USD.toLocaleString()}.
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  ) : (
-                    <div className="text-xs text-white">Enter an amount to check compliance requirements.</div>
-                  )}
-
-                  {/* Upload/Prove buttons (placeholders) */}
-                  {complianceRequired && (
-                    <div className="mt-4 flex items-center gap-2">
-                      <button
-                        onClick={() => setHasComplianceAttestation(true)}
-                        className="px-3 py-2 rounded-full bg-white/10 border border-white/15 text-white hover:bg-white/15 text-xs inline-flex items-center gap-2"
-                      >
-                        <Upload className="w-4 h-4" /> Upload Attestation
-                      </button>
-                      <button
-                        onClick={startProofGeneration}
-                        className="px-3 py-2 rounded-full bg-[#e6ff55] text-[#0a0b0e] text-xs font-bold hover:brightness-110 transition inline-flex items-center gap-2 disabled:opacity-60"
-                        disabled={generatingProof}
-                      >
-                        {generatingProof ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" /> Building zk-proof…
-                          </>
-                        ) : proofReady ? (
-                          <>
-                            <FileCheck className="w-4 h-4" /> Proof ready
-                          </>
-                        ) : (
-                          <>
-                            <Shield className="w-4 h-4" /> Prove Compliance
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  )}
-                </section>
-
-                {/* Proof Generation Section */}
-                <section
-                  className="rounded-2xl backdrop-blur-xl border border-white/15 p-5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06),0_10px_28px_rgba(0,0,0,0.45)]"
-                  style={{ background: "rgba(255,255,255,0.08)" }}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="text-white text-base font-semibold">Proof Generation</div>
-                    {proofReady ? (
-                      <span className="inline-flex items-center gap-1.5 text-emerald-300 text-xs px-2.5 py-1.5 rounded-md bg-emerald-500/15 border border-emerald-500/40">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Ready
-                      </span>
-                    ) : generatingProof ? (
-                      <span className="inline-flex items-center gap-1.5 text-white text-xs px-2.5 py-1.5 rounded-md bg-white/10 border border-white/15">
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" /> Building…
-                      </span>
-                    ) : (
-                      <span className="text-xs text-white">No proof generated</span>
-                    )}
-                  </div>
-                  <div className="text-xs text-white">
-                    Behind the scenes: wallet generates spend proof + compliance proof.
-                  </div>
-
-                  <div className="mt-4 grid gap-2">
-                    <div className="px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white text-xs font-mono min-h-[44px] flex items-center justify-between">
-                      <span className="truncate">
-                        {proofReady ? proofString : generatingProof ? "Building zk-proof…" : "—"}
-                      </span>
-                      <button
-                        onClick={copyProof}
-                        disabled={!proofReady}
-                        className="ml-3 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-white/10 hover:bg-white/15 text-xs border border-white/15 disabled:opacity-60"
-                      >
-                        <Copy className="w-3.5 h-3.5" /> {proofCopied ? "Copied" : "Copy"}
-                      </button>
-                    </div>
-                  </div>
-                </section>
 
                 {/* Transaction Summary */}
                 <section
@@ -476,18 +435,17 @@ export default function WithdrawPage() {
                       <span className="font-mono">{recipient}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span>Compliance</span>
-                      <span
-                        className={`${complianceRequired ? (proofReady ? "text-emerald-300" : "text-yellow-200") : "text-emerald-300"}`}
-                      >
-                        {complianceRequired ? (proofReady ? "Proof ready" : "Required") : "Not required"}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
                       <span>Network fees</span>
                       <span>~$2.10 (est.)</span>
                     </div>
                   </div>
+
+                  {/* Error Display */}
+                  {(withdrawError || proofError || contractError || balanceError) && (
+                    <div className="mt-4 p-3 rounded-lg bg-red-500/15 border border-red-500/40 text-red-200 text-sm">
+                      {withdrawError || proofError || balanceError || (contractError as any)?.message || 'An error occurred'}
+                    </div>
+                  )}
 
                   <div className="mt-5">
                     <button
@@ -495,17 +453,25 @@ export default function WithdrawPage() {
                       disabled={!canConfirm || confirming !== false}
                       className="w-full h-14 px-8 bg-[#e6ff55] text-[#0a0b0e] font-bold text-base rounded-full hover:brightness-110 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
                     >
-                      {confirming === false ? (
+                      {!isReady ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin" /> Initializing...
+                        </>
+                      ) : confirming === false ? (
                         <>
                           Confirm Withdrawal <ArrowRight className="w-4 h-4" />
                         </>
-                      ) : confirming === "verify" ? (
+                      ) : isPending ? (
                         <>
-                          <Loader2 className="w-5 h-5 animate-spin" /> Step 1: Verify proof
+                          <Loader2 className="w-5 h-5 animate-spin" /> Executing withdrawal...
+                        </>
+                      ) : isConfirming ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin" /> Confirming transaction...
                         </>
                       ) : (
                         <>
-                          <Loader2 className="w-5 h-5 animate-spin" /> Step 2: Execute withdrawal
+                          Confirm Withdrawal <ArrowRight className="w-4 h-4" />
                         </>
                       )}
                     </button>
@@ -639,6 +605,11 @@ export default function WithdrawPage() {
                 {selectedToken.symbol.replace(/^e/, "")}
               </div>
               <div className="font-medium text-base">Recipient: {recipient}</div>
+              {txHash && (
+                <div className="font-medium text-sm text-gray-300 mt-2">
+                  Transaction: {txHash.slice(0, 10)}...{txHash.slice(-8)}
+                </div>
+              )}
             </div>
             <div className="flex items-center justify-center gap-4">
               <button
