@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { useReadContract, useAccount } from 'wagmi';
+import { createPublicClient, http } from 'viem';
 import { EERC_CONTRACT } from '../lib/contracts';
 import { sepolia } from 'wagmi/chains';
 import { useSignMessage } from 'wagmi';
@@ -40,14 +41,64 @@ export function useEncryptedBalance() {
           setDecryptError(null);
           
           console.log('🔍 Encrypted balance data:', encryptedBalance);
+
+          // Helper to test if EGCT is zero
+          const isEgctZero = (eb: any) => {
+            try {
+              const egct = eb?.eGCT ?? eb?.[0];
+              const c1x = BigInt(egct?.c1?.x ?? 0);
+              const c1y = BigInt(egct?.c1?.y ?? 0);
+              const c2x = BigInt(egct?.c2?.x ?? 0);
+              const c2y = BigInt(egct?.c2?.y ?? 0);
+              return c1x === 0n && c1y === 0n && c2x === 0n && c2y === 0n;
+            } catch {
+              return true;
+            }
+          };
+
+          let ebLocal: any = encryptedBalance as any;
+
+          // Fallback: if zero for native token, scan all registered tokens and pick first non-zero
+          if (isEgctZero(ebLocal)) {
+            const client = createPublicClient({ chain: sepolia, transport: http() });
+            try {
+              const tokens = await client.readContract({
+                address: EERC_CONTRACT.address,
+                abi: EERC_CONTRACT.abi,
+                functionName: 'getTokens',
+              }) as `0x${string}`[];
+
+              const candidates: (`0x${string}`)[] = [
+                '0x0000000000000000000000000000000000000000',
+                ...tokens,
+              ];
+
+              for (const tokenAddr of candidates) {
+                const eb = await client.readContract({
+                  address: EERC_CONTRACT.address,
+                  abi: EERC_CONTRACT.abi,
+                  functionName: 'getBalanceFromTokenAddress',
+                  args: [address as `0x${string}`, tokenAddr],
+                });
+                if (!isEgctZero(eb)) {
+                  ebLocal = eb;
+                  console.log('🔍 Using non-zero balance from token:', tokenAddr);
+                  break;
+                }
+              }
+            } catch (e) {
+              console.warn('Fallback token scan failed:', e);
+            }
+          }
           
-          const message = `Decrypt balance for ${address}`;
-          const signature = await signMessageAsync({ message });
+          // Use the exact same deterministic message used during registration
+          const registrationMessage = `eERC\nRegistering user with\n Address:${address.toLowerCase()}`;
+          const signature = await signMessageAsync({ message: registrationMessage });
           
           const privateKey = i0(signature);
           console.log('🔍 Derived private key:', privateKey.toString());
           
-          const balance = await getDecryptedBalance(privateKey, [], [], encryptedBalance as any);
+          const balance = await getDecryptedBalance(privateKey, [], [], ebLocal as any);
           console.log('🔍 Decrypted balance result:', balance.toString());
           setDecryptedBalance(balance.toString());
         } catch (err) {

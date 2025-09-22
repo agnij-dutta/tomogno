@@ -145,7 +145,9 @@ export default function WithdrawPage() {
         recipient: recipient,
       }
 
-      await withdraw(withdrawParams)
+      // Convert decrypted balance to bigint for withdraw function
+      const currentBalance = decryptedBalance ? BigInt(Math.floor(parseFloat(decryptedBalance) * 1e18)) : 0n
+      await withdraw(withdrawParams, currentBalance)
       
       setConfirming(false)
       setSuccessOpen(true)

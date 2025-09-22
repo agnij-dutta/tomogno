@@ -71,7 +71,7 @@ export const decryptPoint = (
 	
 	// Calculate the inverse point by negating the x-coordinate
 	// Convert to field element, negate, then convert back to bigint
-	const negatedX = Fr.e(c1x[0].toString()).neg();
+	const negatedX = Fr.neg(Fr.e(c1x[0]));
 	const c1xInverse: Point<bigint> = [BigInt(negatedX.toString()), c1x[1]];
 	const c2Point: Point<bigint> = [c2[0], c2[1]];
 	

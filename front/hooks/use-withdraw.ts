@@ -38,8 +38,6 @@ export function useWithdraw() {
   const [isGeneratingProof, setIsGeneratingProof] = useState(false);
   const [proofError, setProofError] = useState<string | null>(null);
   const [generatedProof, setGeneratedProof] = useState<WithdrawProof | null>(null);
-  const [userBalance, setUserBalance] = useState<bigint>(0n);
-  const [isLoadingBalance, setIsLoadingBalance] = useState(false);
 
   // Read user's encrypted balance
   const { data: encryptedBalanceData, refetch: refetchBalance } = useReadContract({
@@ -68,38 +66,10 @@ export function useWithdraw() {
     query: { enabled: !!address && isOnCorrectChain }
   });
 
-  // Decrypt user balance when encrypted balance data changes
-  useEffect(() => {
-    if (encryptedBalanceData && address && userPublicKey) {
-      const decryptBalance = async () => {
-        try {
-          setIsLoadingBalance(true);
-          const message = `Decrypt balance for ${address}`;
-          const signature = await signMessageAsync({ message });
-          const privateKey = i0(signature);
-          
-          const balance = await getDecryptedBalance(
-            privateKey, 
-            [], 
-            [], 
-            encryptedBalanceData as any
-          );
-          
-          setUserBalance(balance);
-        } catch (err) {
-          console.error('Error decrypting balance:', err);
-          setUserBalance(0n);
-        } finally {
-          setIsLoadingBalance(false);
-        }
-      };
-
-      decryptBalance();
-    }
-  }, [encryptedBalanceData, address, userPublicKey, signMessageAsync]);
+  // Note: Balance decryption is now handled by useEncryptedBalance hook
 
   // Generate withdraw proof
-  const generateWithdrawProof = useCallback(async (params: WithdrawParams) => {
+  const generateWithdrawProof = useCallback(async (params: WithdrawParams, currentBalance: bigint) => {
     if (!address || !userPublicKey || !auditorPublicKey) {
       throw new Error('Missing required data for proof generation');
     }
@@ -112,14 +82,6 @@ export function useWithdraw() {
       const message = `Generate withdraw proof for ${address}`;
       const signature = await signMessageAsync({ message });
       const privateKey = i0(signature);
-
-      // Get current balance for proof generation
-      const currentBalance = await getDecryptedBalance(
-        privateKey,
-        [],
-        [],
-        encryptedBalanceData as any
-      );
 
       if (currentBalance < params.amount) {
         throw new Error('Insufficient balance for withdrawal');
@@ -184,7 +146,7 @@ export function useWithdraw() {
   }, [address, userPublicKey, auditorPublicKey, encryptedBalanceData, signMessageAsync]);
 
   // Execute withdraw transaction
-  const executeWithdraw = useCallback(async (params: WithdrawParams, proof?: WithdrawProof) => {
+  const executeWithdraw = useCallback(async (params: WithdrawParams, currentBalance: bigint, proof?: WithdrawProof) => {
     if (!address) {
       throw new Error('Wallet not connected');
     }
@@ -199,7 +161,7 @@ export function useWithdraw() {
 
     try {
       // Generate balance PCT for the new balance after withdrawal
-      const newBalance = userBalance - params.amount;
+      const newBalance = currentBalance - params.amount;
       const balancePCT = new Array(7).fill(0n).map((_, i) => 
         i === 0 ? newBalance : 0n
       ) as readonly [bigint, bigint, bigint, bigint, bigint, bigint, bigint];
@@ -216,19 +178,19 @@ export function useWithdraw() {
       console.error('Error executing withdraw:', error);
       throw error;
     }
-  }, [address, isOnCorrectChain, userBalance, writeContract]);
+  }, [address, isOnCorrectChain, writeContract]);
 
   // Combined withdraw function
-  const withdraw = useCallback(async (params: WithdrawParams) => {
+  const withdraw = useCallback(async (params: WithdrawParams, currentBalance: bigint) => {
     try {
       // Generate proof if not already generated
       let proof = generatedProof;
       if (!proof) {
-        proof = await generateWithdrawProof(params);
+        proof = await generateWithdrawProof(params, currentBalance);
       }
 
       // Execute withdraw
-      await executeWithdraw(params, proof);
+      await executeWithdraw(params, currentBalance, proof);
 
       // Clear generated proof after successful execution
       setGeneratedProof(null);
@@ -239,17 +201,8 @@ export function useWithdraw() {
     }
   }, [generatedProof, generateWithdrawProof, executeWithdraw]);
 
-  // Format balance for display
-  const formattedBalance = useMemo(() => {
-    if (isLoadingBalance) return 'Loading...';
-    return `${formatEther(userBalance)} eETH`;
-  }, [userBalance, isLoadingBalance]);
-
   return {
     // State
-    userBalance,
-    formattedBalance,
-    isLoadingBalance,
     isGeneratingProof,
     proofError,
     generatedProof,
@@ -268,7 +221,6 @@ export function useWithdraw() {
     refetchBalance,
     
     // Computed
-    canWithdraw: userBalance > 0n,
     isReady: !!address && isOnCorrectChain && !!userPublicKey && !!auditorPublicKey,
   };
 }

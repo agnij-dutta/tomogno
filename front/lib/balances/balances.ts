@@ -260,53 +260,70 @@ export async function getDecryptedBalance(
     encryptedBalance: any
 ): Promise<bigint> {
     console.log("Before encryptedBalance: ", encryptedBalance);
-    
-    // The encrypted balance structure is: [eGCT, nonce, amountPCTs, balancePCT, transactionIndex]
-    // where eGCT is: { c1: { x: bigint, y: bigint }, c2: { x: bigint, y: bigint } }
-    
-    if (!encryptedBalance || !encryptedBalance[0]) {
+
+    // viem can decode tuple structs either as arrays or as named objects depending on ABI/use
+    // Support both shapes here.
+    let eGCTObj: any | undefined;
+    let amountPCTsLocal: any[] = amountPCTs && amountPCTs.length ? amountPCTs : [];
+    let balancePCTLocal: bigint[] = balancePCT && balancePCT.length ? balancePCT : [] as any;
+
+    if (!encryptedBalance) {
         console.log("No encrypted balance data available");
         return BigInt(0);
     }
-    
-    const eGCT = encryptedBalance[0];
-    console.log("eGCT structure:", eGCT);
-    
-    // Extract c1 and c2 from the eGCT structure
-    const c1: [bigint, bigint] = [eGCT.c1.x, eGCT.c1.y];
-    const c2: [bigint, bigint] = [eGCT.c2.x, eGCT.c2.y];
+
+    if (encryptedBalance.eGCT) {
+        // Named struct shape
+        eGCTObj = encryptedBalance.eGCT;
+        amountPCTsLocal = amountPCTsLocal.length ? amountPCTsLocal : (encryptedBalance.amountPCTs || []);
+        balancePCTLocal = balancePCTLocal.length ? balancePCTLocal : (encryptedBalance.balancePCT || []);
+    } else if (Array.isArray(encryptedBalance)) {
+        // Tuple shape: [eGCT, nonce, amountPCTs, balancePCT, transactionIndex]
+        eGCTObj = encryptedBalance[0];
+        amountPCTsLocal = amountPCTsLocal.length ? amountPCTsLocal : (encryptedBalance[2] || []);
+        balancePCTLocal = balancePCTLocal.length ? balancePCTLocal : (encryptedBalance[3] || []);
+    } else {
+        console.log("Unrecognized encrypted balance shape");
+        return BigInt(0);
+    }
+
+    if (!eGCTObj || !eGCTObj.c1 || !eGCTObj.c2) {
+        console.log("eGCT not present in balance");
+        return BigInt(0);
+    }
+
+    const c1: [bigint, bigint] = [BigInt(eGCTObj.c1.x), BigInt(eGCTObj.c1.y)];
+    const c2: [bigint, bigint] = [BigInt(eGCTObj.c2.x), BigInt(eGCTObj.c2.y)];
     console.log("c1:", c1);
     console.log("c2:", c2);
-    
-    // Check if EGCT is empty (all zeros)
-    const isEGCTEmpty = c1[0] === BigInt(0) && c1[1] === BigInt(0) && c2[0] === BigInt(0) && c2[1] === BigInt(0);
+
+    const isEGCTEmpty = c1[0] === 0n && c1[1] === 0n && c2[0] === 0n && c2[1] === 0n;
     console.log("isEGCTEmpty:", isEGCTEmpty);
-    
+
     if (!isEGCTEmpty) {
-        // Decrypt EGCT - this is the primary balance
         const egctBalance = decryptEGCTBalance(privateKey, c1, c2);
         console.log("🔐 EGCT Balance found:", egctBalance.toString());
         return egctBalance;
     }
-    // If EGCT is empty, fall back to PCT decryption
-    let totalBalance = BigInt(0);
 
-    // Decrypt the balance PCT if it exists
-    if (balancePCT.some((e) => e !== BigInt(0))) {
-        console.log("Before balancePCT: ", balancePCT)
+    let totalBalance = 0n;
+
+    if (Array.isArray(balancePCTLocal) && balancePCTLocal.some((e) => BigInt(e) !== 0n)) {
+        console.log("Before balancePCT (local): ", balancePCTLocal)
         try {
-            const decryptedBalancePCT = await decryptPCT(privateKey, balancePCT);
+            const decryptedBalancePCT = await decryptPCT(privateKey, balancePCTLocal.map((x) => BigInt(x)) as any);
             totalBalance += BigInt(decryptedBalancePCT[0]);
         } catch (error) {
             console.log("Note: Balance PCT is empty or couldn't be decrypted");
         }
     }
-    console.log("Before amountPCTs: ", amountPCTs)
-    // Decrypt all the amount PCTs and add them to the total balance
-    for (const amountPCT of amountPCTs) {
-        if (amountPCT.pct && amountPCT.pct.some((e: bigint) => e !== BigInt(0))) {
+
+    console.log("Before amountPCTs (local): ", amountPCTsLocal)
+    for (const amountPCT of amountPCTsLocal) {
+        const pctArr = amountPCT?.pct as bigint[] | undefined;
+        if (pctArr && pctArr.some((e: any) => BigInt(e) !== 0n)) {
             try {
-                const decryptedAmountPCT = await decryptPCT(privateKey, amountPCT.pct);
+                const decryptedAmountPCT = await decryptPCT(privateKey, pctArr.map((x: any) => BigInt(x)) as any);
                 totalBalance += BigInt(decryptedAmountPCT[0]);
             } catch (error) {
                 console.log("Note: Some amount PCT couldn't be decrypted");
