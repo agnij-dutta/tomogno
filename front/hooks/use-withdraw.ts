@@ -87,6 +87,14 @@ export function useWithdraw() {
         throw new Error('Insufficient balance for withdrawal');
       }
 
+      // Normalize auditor key (supports {x,y} or [x,y])
+      const auditorKeyAny: any = auditorPublicKey as any;
+      const auditorX = (auditorKeyAny?.x ?? auditorKeyAny?.[0])?.toString?.() || auditorKeyAny?.[0]?.toString?.() || undefined;
+      const auditorY = (auditorKeyAny?.y ?? auditorKeyAny?.[1])?.toString?.() || auditorKeyAny?.[1]?.toString?.() || undefined;
+      if (!auditorX || !auditorY) {
+        throw new Error('Auditor public key not available');
+      }
+
       // Prepare circuit inputs
       const inputs = {
         ValueToWithdraw: params.amount.toString(),
@@ -101,7 +109,7 @@ export function useWithdraw() {
           (encryptedBalanceData as any)?.eGCT?.c2?.x?.toString() || "0",
           (encryptedBalanceData as any)?.eGCT?.c2?.y?.toString() || "0"
         ],
-        AuditorPublicKey: [auditorPublicKey.x.toString(), auditorPublicKey.y.toString()],
+        AuditorPublicKey: [auditorX, auditorY],
         RecipientAddress: BigInt(params.recipient).toString(),
       };
 

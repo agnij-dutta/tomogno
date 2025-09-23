@@ -18,6 +18,7 @@ import {
 } from "lucide-react"
 import { useWithdraw } from "../hooks/use-withdraw"
 import { useEncryptedBalance } from "../hooks/use-encrypted-balance"
+import { useTokens } from "../hooks/use-tokens"
 import { formatEther, parseEther } from "viem"
 
 type Token = {
@@ -48,40 +49,60 @@ export default function WithdrawPage() {
     isReady,
   } = useWithdraw()
 
-  // Use the working encrypted balance hook
+  // Token discovery
+  const { tokens: discoveredTokens, isLoading: isLoadingTokens } = useTokens()
+
+  // Selected token address
+  const [selectedTokenAddress, setSelectedTokenAddress] = useState<`0x${string}` | null>(null)
+
+  // Per-token balance
+  const selectedTokenDecimals = useMemo(() => {
+    const t = (discoveredTokens || []).find(t => t.address === (selectedTokenAddress as any))
+    return t?.decimals ?? 18
+  }, [discoveredTokens, selectedTokenAddress])
   const {
     decryptedBalance,
     isLoading: isLoadingBalance,
     error: balanceError,
-  } = useEncryptedBalance()
+  } = useEncryptedBalance(selectedTokenAddress || undefined, selectedTokenDecimals)
 
-  // Available tokens (currently only eETH for native token)
-  const tokens = useMemo<Token[]>(
-    () => [
-      { 
-        symbol: "eETH", 
-        name: "Encrypted ETH", 
-        balance: decryptedBalance ? parseFloat(decryptedBalance) : 0, 
-        priceUsd: 1600,
-        tokenId: 0n, // Native token has ID 0
-        tokenAddress: "0x0000000000000000000000000000000000000000"
-      },
-    ],
-    [decryptedBalance],
-  )
+  // Available tokens from chain metadata
+  const tokens = useMemo<Token[]>(() => {
+    const list = (discoveredTokens || []).map((t) => ({
+      symbol: t.isNative ? "eETH" : `e${t.symbol}`,
+      name: t.isNative ? "Encrypted ETH" : `Encrypted ${t.symbol}`,
+      balance: decryptedBalance ? parseFloat(decryptedBalance) : 0,
+      priceUsd: 1600,
+      tokenId: 0n,
+      tokenAddress: t.address,
+    }))
+    return list
+  }, [discoveredTokens, decryptedBalance])
 
   // UI State
-  const [selectedToken, setSelectedToken] = useState<Token>(tokens[0])
+  const [selectedToken, setSelectedToken] = useState<Token | null>(null)
   const [amount, setAmount] = useState<string>("")
   const [showTokenModal, setShowTokenModal] = useState(false)
   const [tokenQuery, setTokenQuery] = useState("")
 
-  // Keep selected token in sync with latest decrypted balance
+  // Initialize selected token once tokens load
   useEffect(() => {
-    if (tokens[0] && (selectedToken.symbol !== tokens[0].symbol || selectedToken.balance !== tokens[0].balance)) {
+    if (!selectedTokenAddress && tokens[0]) {
       setSelectedToken(tokens[0])
+      setSelectedTokenAddress(tokens[0].tokenAddress as `0x${string}`)
     }
-  }, [tokens, decryptedBalance])
+  }, [tokens])
+
+  // Keep selected token display in sync with latest decrypted balance
+  useEffect(() => {
+    if (selectedTokenAddress) {
+      const match = tokens.find(t => t.tokenAddress === selectedTokenAddress)
+      if (!match) return
+      if (!selectedToken || selectedToken.symbol !== match.symbol || selectedToken.balance !== match.balance) {
+        setSelectedToken(match)
+      }
+    }
+  }, [tokens, decryptedBalance, selectedTokenAddress])
 
   const [recipientMode, setRecipientMode] = useState<"default" | "custom">("default")
   const [defaultRecipient, setDefaultRecipient] = useState<string>(address || "0x...")
@@ -103,8 +124,8 @@ export default function WithdrawPage() {
 
   // Derived values
   const numericAmount = useMemo(() => Number.parseFloat(amount.replace(/,/g, "")) || 0, [amount])
-  const amountUsd = useMemo(() => numericAmount * selectedToken.priceUsd, [numericAmount, selectedToken])
-  const insufficient = numericAmount > selectedToken.balance
+  const amountUsd = useMemo(() => numericAmount * (selectedToken?.priceUsd ?? 0), [numericAmount, selectedToken])
+  const insufficient = numericAmount > (selectedToken?.balance ?? 0)
   const isPositive = numericAmount > 0
   const recipient = recipientMode === "default" ? defaultRecipient : customRecipient || "0x..."
 
@@ -127,10 +148,12 @@ export default function WithdrawPage() {
 
   function onSelectToken(t: Token) {
     setSelectedToken(t)
+    setSelectedTokenAddress(t.tokenAddress as `0x${string}`)
     setShowTokenModal(false)
   }
 
   function setMax() {
+    if (!selectedToken) return
     setAmount(String(selectedToken.balance))
   }
 
@@ -147,7 +170,7 @@ export default function WithdrawPage() {
       setConfirming("execute")
       
       const withdrawParams = {
-        tokenId: selectedToken.tokenId,
+        tokenId: selectedToken!.tokenId,
         amount: parseEther(amount),
         recipient: recipient,
       }
@@ -170,12 +193,12 @@ export default function WithdrawPage() {
   }
 
   // Show connection prompt if not ready
-  if (!address) {
+  if (!address || !selectedToken) {
     return (
       <div className="relative min-h-screen w-full overflow-hidden flex flex-col items-center justify-center">
         <div className="text-center text-white">
-          <h2 className="text-2xl font-bold mb-4">Connect Your Wallet</h2>
-          <p className="text-gray-400">Please connect your wallet to withdraw tokens</p>
+          <h2 className="text-2xl font-bold mb-4">{!address ? 'Connect Your Wallet' : 'Loading tokens...'}</h2>
+          <p className="text-gray-400">{!address ? 'Please connect your wallet to withdraw tokens' : 'Fetching tokens and balances'}</p>
         </div>
       </div>
     );

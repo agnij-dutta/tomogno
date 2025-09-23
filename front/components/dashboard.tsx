@@ -14,6 +14,7 @@ import type React from "react"
 import { useMemo, useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useEncryptedBalance } from "@/hooks/use-encrypted-balance"
+import { useTokens } from "@/hooks/use-tokens"
 import { useAccount } from "wagmi"
 
 type TokenRow = {
@@ -32,12 +33,17 @@ export default function TsunamiDashboard() {
   
   useEffect(() => setMounted(true), [])
 
-  // Live encrypted balance (currently eUSDC)
-  const { decryptedBalance, isLoading } = useEncryptedBalance()
+  // Token discovery and per-token balance
+  const { tokens: discoveredTokens } = useTokens()
+  const [selectedTokenAddress, setSelectedTokenAddress] = useState<`0x${string}` | null>(null)
+  const selectedMeta = useMemo(() => (discoveredTokens || [])[0] && (discoveredTokens || []).find(t => t.address === (selectedTokenAddress as any)) || (discoveredTokens || [])[0], [discoveredTokens, selectedTokenAddress])
+  const selectedDecimals = selectedMeta?.decimals ?? 18
+  const selectedSymbol = selectedMeta ? (selectedMeta.isNative ? 'eETH' : `e${selectedMeta.symbol}`) : 'eTOKEN'
+  const { decryptedBalance, isLoading } = useEncryptedBalance(selectedMeta?.address as any, selectedDecimals)
   const decryptedBalanceNum = useMemo(() => Number(decryptedBalance || 0), [decryptedBalance])
-  const tokens: TokenRow[] = useMemo(() => [
-    { symbol: "eUSDC", balance: decryptedBalanceNum, usd: decryptedBalanceNum, icon: DollarSign },
-  ], [decryptedBalanceNum])
+  const tokens: TokenRow[] = useMemo(() => selectedMeta ? [
+    { symbol: selectedSymbol, balance: decryptedBalanceNum, usd: decryptedBalanceNum * (selectedMeta.isNative ? 2000 : 1), icon: DollarSign },
+  ] : [], [selectedMeta, decryptedBalanceNum])
 
   const totalUsd = useMemo(() => tokens.reduce((sum, t) => sum + t.usd, 0), [tokens])
 
@@ -132,6 +138,22 @@ export default function TsunamiDashboard() {
           </div>
           <div className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
             {showBalances ? `$${totalUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "••••"}
+          </div>
+          {/* Token selector */}
+          <div className="mt-3 text-xs text-white/70">
+            {discoveredTokens && discoveredTokens.length > 0 && (
+              <select
+                className="bg-white/10 border border-white/15 rounded-md px-2 py-1"
+                value={selectedTokenAddress ?? (discoveredTokens[0].address as any)}
+                onChange={(e) => setSelectedTokenAddress(e.target.value as any)}
+              >
+                {discoveredTokens.map((t) => (
+                  <option key={t.address} value={t.address as any}>
+                    {t.isNative ? 'eETH' : `e${t.symbol}`}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
           <div className="mt-4 divide-y divide-white/10">
             {tokens.map((t) => (

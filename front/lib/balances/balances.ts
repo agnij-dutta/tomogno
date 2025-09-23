@@ -257,7 +257,8 @@ export async function getDecryptedBalance(
 	privateKey: bigint,
     amountPCTs: any[],
     balancePCT: bigint[],
-    encryptedBalance: any
+    encryptedBalance: any,
+    targetDecimals: number = 18,
 ): Promise<bigint> {
     console.log("Before encryptedBalance: ", encryptedBalance);
 
@@ -300,14 +301,18 @@ export async function getDecryptedBalance(
     const isEGCTEmpty = c1[0] === 0n && c1[1] === 0n && c2[0] === 0n && c2[1] === 0n;
     console.log("isEGCTEmpty:", isEGCTEmpty);
 
+    // Internal representation uses 2 decimals for discrete log search (see findDiscreteLogOptimized comment)
+    const INTERNAL_DECIMALS = 2;
+
     if (!isEGCTEmpty) {
         const egctBalance = decryptEGCTBalance(privateKey, c1, c2);
         console.log("🔐 EGCT Balance found:", egctBalance.toString());
-        
-        // Scale from contract's internal DECIMALS (10) to ETH units (18 decimals)
-        // Contract stores values scaled down from 18 to 10 decimals
-        // So to display, we need to scale back up: balance * 10^(18-10) = balance * 10^8
-        const scaledBalance = egctBalance * (10n ** 8n);
+
+        // Scale from internal 2 decimals to desired token decimals
+        const diff = BigInt(targetDecimals - INTERNAL_DECIMALS);
+        const scaledBalance = diff >= 0n
+            ? egctBalance * (10n ** diff)
+            : egctBalance / (10n ** (-diff));
         console.log("🔐 Scaled balance for display:", scaledBalance.toString());
         
         return scaledBalance;
@@ -319,8 +324,10 @@ export async function getDecryptedBalance(
         console.log("Before balancePCT (local): ", balancePCTLocal)
         try {
             const decryptedBalancePCT = await decryptPCT(privateKey, balancePCTLocal.map((x) => BigInt(x)) as any);
-            // Scale PCT balance from internal DECIMALS (10) to ETH units (18)
-            const scaledPCTBalance = BigInt(decryptedBalancePCT[0]) * (10n ** 8n);
+            const diff = BigInt(targetDecimals - INTERNAL_DECIMALS);
+            const scaledPCTBalance = diff >= 0n
+                ? BigInt(decryptedBalancePCT[0]) * (10n ** diff)
+                : BigInt(decryptedBalancePCT[0]) / (10n ** (-diff));
             totalBalance += scaledPCTBalance;
         } catch (error) {
             console.log("Note: Balance PCT is empty or couldn't be decrypted");
@@ -333,8 +340,10 @@ export async function getDecryptedBalance(
         if (pctArr && pctArr.some((e: any) => BigInt(e) !== 0n)) {
             try {
                 const decryptedAmountPCT = await decryptPCT(privateKey, pctArr.map((x: any) => BigInt(x)) as any);
-                // Scale amount PCT from internal DECIMALS (10) to ETH units (18)
-                const scaledAmountPCT = BigInt(decryptedAmountPCT[0]) * (10n ** 8n);
+                const diff = BigInt(targetDecimals - INTERNAL_DECIMALS);
+                const scaledAmountPCT = diff >= 0n
+                    ? BigInt(decryptedAmountPCT[0]) * (10n ** diff)
+                    : BigInt(decryptedAmountPCT[0]) / (10n ** (-diff));
                 totalBalance += scaledAmountPCT;
             } catch (error) {
                 console.log("Note: Some amount PCT couldn't be decrypted");

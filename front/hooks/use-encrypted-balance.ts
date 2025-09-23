@@ -8,7 +8,7 @@ import { sepolia } from 'wagmi/chains';
 import { useSignMessage } from 'wagmi';
 import { getDecryptedBalance, i0 } from '../lib/balances/balances';
 
-export function useEncryptedBalance() {
+export function useEncryptedBalance(tokenAddress?: `0x${string}`, tokenDecimals: number = 18) {
   const { address } = useAccount();
   const { signMessageAsync } = useSignMessage();
 
@@ -16,7 +16,7 @@ export function useEncryptedBalance() {
     address: EERC_CONTRACT.address,
     abi: EERC_CONTRACT.abi,
     functionName: 'getBalanceFromTokenAddress',
-    args: address ? [address, "0x0000000000000000000000000000000000000000"] : undefined,
+    args: address && tokenAddress ? [address, tokenAddress] : address ? [address, "0x0000000000000000000000000000000000000000"] : undefined,
     chainId: sepolia.id,
     query: {
       enabled: !!address,
@@ -59,7 +59,7 @@ export function useEncryptedBalance() {
           let ebLocal: any = encryptedBalance as any;
 
           // Fallback: if zero for native token, scan all registered tokens and pick first non-zero
-          if (isEgctZero(ebLocal)) {
+          if (!tokenAddress && isEgctZero(ebLocal)) {
             const client = createPublicClient({ chain: sepolia, transport: http() });
             try {
               const tokens = await client.readContract({
@@ -98,11 +98,11 @@ export function useEncryptedBalance() {
           const privateKey = i0(signature);
           console.log('🔍 Derived private key:', privateKey.toString());
           
-          const balance = await getDecryptedBalance(privateKey, [], [], ebLocal as any);
+          const balance = await getDecryptedBalance(privateKey, [], [], ebLocal as any, tokenDecimals);
           console.log('🔍 Decrypted balance result:', balance.toString());
           
-          // Convert from BigInt (wei) to ETH string for display
-          const balanceInEth = Number(balance) / 1e18;
+          // Convert from BigInt with tokenDecimals to decimal string
+          const balanceInEth = Number(balance) / 10 ** tokenDecimals;
           setDecryptedBalance(balanceInEth.toString());
         } catch (err) {
           console.error('Error decrypting balance:', err);
@@ -114,11 +114,11 @@ export function useEncryptedBalance() {
 
       decryptBalance();
     }
-  }, [encryptedBalance, address, signMessageAsync]);
+  }, [encryptedBalance, address, signMessageAsync, tokenAddress]);
 
   const formattedEncryptedBalance = decryptedBalance ? 
-    `${Number(decryptedBalance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 10 })} eETH` : 
-    '0.00000000 eETH';
+    `${Number(decryptedBalance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })}` : 
+    '0.000000';
 
   return {
     encryptedBalance,

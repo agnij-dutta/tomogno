@@ -20,6 +20,7 @@ import { Progress } from "@/components/ui/progress"
 import { useNativeETH } from "@/hooks/use-native-eth"
 import { useERC20 } from "@/hooks/use-erc20"
 import { useEncryptedBalance } from "@/hooks/use-encrypted-balance"
+import { useTokens } from "@/hooks/use-tokens"
 import { useReadContract, useAccount, useWriteContract, useWaitForTransactionReceipt, useChainId, useSwitchChain } from 'wagmi'
 import { useRegistrationStatus } from '@/hooks/use-registration-status'
 import { useRegistration } from '@/hooks/use-registration'
@@ -122,11 +123,19 @@ export default function DepositPage() {
   const symbol = currentToken.symbol
   const decimals = currentToken.decimals
 
+  const { tokens } = useTokens()
+  const [selectedTokenAddress, setSelectedTokenAddress] = useState<`0x${string}` | null>(null)
+  const isNativeSelected = useMemo(() => selectedTokenAddress === null || selectedTokenAddress === '0x0000000000000000000000000000000000000000', [selectedTokenAddress])
+  const tokenDecimals = useMemo(() => {
+    if (!tokens || tokens.length === 0) return 18
+    const t = tokens.find(t => t.address === (selectedTokenAddress as any))
+    return t?.decimals ?? 18
+  }, [tokens, selectedTokenAddress])
   const { 
     decryptedBalance,
     isLoading: isLoadingEncryptedBalance,
     error: encryptedBalanceError
-  } = useEncryptedBalance()
+  } = useEncryptedBalance(selectedTokenAddress || undefined, tokenDecimals)
 
   // Check if user is registered
   const { 
@@ -333,17 +342,14 @@ export default function DepositPage() {
         depositArgs = [amountWei, "0x0000000000000000000000000000000000000000", amountPCT]
         depositValue = amountWei
       } else {
-        // ERC20 token deposit
+        // ERC20 token deposit: approve then deposit in one click
         depositArgs = [amountWei, currentToken.address!, amountPCT]
         depositValue = undefined
-        
-        // Check if we need approval for ERC20
+
         if (!checkAllowanceSufficient(amount)) {
           console.log('🔄 Insufficient allowance, approving tokens...')
           await handleApproveTokens(amount)
-          console.log('✅ Tokens approved, please retry deposit manually')
-          setDepositError('Tokens approved. Please click "Confirm Deposit" again to complete the transaction.')
-          return
+          console.log('✅ Tokens approved, proceeding to deposit...')
         }
       }
       
@@ -1082,9 +1088,9 @@ export default function DepositPage() {
                     <div className="text-white font-mono">{selectedToken.balance.toLocaleString()} ETH</div>
                   </div>
                   <div className="flex items-center justify-between text-sm py-2">
-                    <div className="text-white">Private eETH</div>
+                    <div className="text-white">Private {isNativeSelected ? 'eETH' : `e${currentToken.symbol}`}</div>
                     <div className="text-white font-mono">
-                      {isLoadingEncryptedBalance ? "Loading..." : `${decryptedBalance || "0"} eETH`}
+                      {isLoadingEncryptedBalance ? "Loading..." : `${decryptedBalance || "0"} ${isNativeSelected ? 'eETH' : `e${currentToken.symbol}`}`}
                     </div>
                   </div>
                 </div>
