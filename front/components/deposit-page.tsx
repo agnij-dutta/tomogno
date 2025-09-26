@@ -125,17 +125,29 @@ export default function DepositPage() {
 
   const { tokens } = useTokens()
   const [selectedTokenAddress, setSelectedTokenAddress] = useState<`0x${string}` | null>(null)
-  const isNativeSelected = useMemo(() => selectedTokenAddress === null || selectedTokenAddress === '0x0000000000000000000000000000000000000000', [selectedTokenAddress])
-  const tokenDecimals = useMemo(() => {
-    if (!tokens || tokens.length === 0) return 18
-    const t = tokens.find(t => t.address === (selectedTokenAddress as any))
-    return t?.decimals ?? 18
-  }, [tokens, selectedTokenAddress])
+  const firstErc20 = useMemo(() => (tokens || []).find(t => !t.isNative), [tokens])
+  const selectedAddress = useMemo<`0x${string}` | undefined>(() => {
+    return selectedTokenType === 'ETH'
+      ? '0x0000000000000000000000000000000000000000'
+      : (selectedTokenAddress || firstErc20?.address)
+  }, [selectedTokenType, selectedTokenAddress, firstErc20])
+  const selectedMeta = useMemo(() => (tokens || []).find(t => t.address === (selectedAddress as any)), [tokens, selectedAddress])
+  const isNativeSelected = selectedTokenType === 'ETH'
+  // keep selectedTokenAddress in sync with the UI token type
+  useEffect(() => {
+    if (!tokens || tokens.length === 0) return
+    if (selectedTokenType === 'ETH') {
+      setSelectedTokenAddress('0x0000000000000000000000000000000000000000')
+    } else if (firstErc20) {
+      setSelectedTokenAddress(firstErc20.address)
+    }
+  }, [selectedTokenType, tokens, firstErc20])
+  const tokenDecimals = useMemo(() => selectedMeta?.decimals ?? (isNativeSelected ? 18 : 18), [selectedMeta, isNativeSelected])
   const { 
     decryptedBalance,
     isLoading: isLoadingEncryptedBalance,
     error: encryptedBalanceError
-  } = useEncryptedBalance(selectedTokenAddress || undefined, tokenDecimals)
+  } = useEncryptedBalance(selectedAddress as any, tokenDecimals)
 
   // Check if user is registered
   const { 
@@ -746,7 +758,7 @@ export default function DepositPage() {
                     <div className="mt-4 mb-4">
                       <div className="flex gap-2 p-1 bg-white/5 rounded-xl border border-white/10">
                         <button
-                          onClick={() => setSelectedTokenType('ETH')}
+                          onClick={() => { setSelectedTokenType('ETH'); setSelectedTokenAddress('0x0000000000000000000000000000000000000000') }}
                           className={`flex-1 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
                             selectedTokenType === 'ETH'
                               ? 'bg-white/20 text-white border border-white/20'
@@ -762,7 +774,11 @@ export default function DepositPage() {
                           </div>
                         </button>
                         <button
-                          onClick={() => setSelectedTokenType('ERC20')}
+                          onClick={() => {
+                            setSelectedTokenType('ERC20');
+                            const firstErc20 = (tokens || []).find(t => !t.isNative)
+                            if (firstErc20) setSelectedTokenAddress(firstErc20.address)
+                          }}
                           className={`flex-1 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
                             selectedTokenType === 'ERC20'
                               ? 'bg-white/20 text-white border border-white/20'
@@ -794,8 +810,8 @@ export default function DepositPage() {
                             <span className="text-white text-sm font-bold">{selectedToken.symbol[0]}</span>
                           </div>
                           <div>
-                            <div className="text-white text-lg font-semibold">{selectedToken.symbol}</div>
-                            <div className="text-white text-xs">{selectedToken.name}</div>
+                            <div className="text-white text-lg font-semibold">{selectedMeta?.isNative ? 'ETH' : selectedToken.symbol}</div>
+                            <div className="text-white text-xs">{selectedMeta?.isNative ? 'Ethereum' : selectedToken.symbol.replace(/^e/, '')}</div>
                           </div>
                         </div>
                         <div className="text-right">
@@ -1080,12 +1096,12 @@ export default function DepositPage() {
               >
                 <div className="flex items-center justify-between">
                   <div className="text-white text-base font-semibold">Current Balance</div>
-                  <div className="text-xs text-white">Live data</div>
+                  <div className="text-xs text-white/70">Balances</div>
                 </div>
                 <div className="mt-3 space-y-2">
                   <div className="flex items-center justify-between text-sm py-2">
-                    <div className="text-white">Public ETH</div>
-                    <div className="text-white font-mono">{selectedToken.balance.toLocaleString()} ETH</div>
+                    <div className="text-white">Public {selectedToken.symbol}</div>
+                    <div className="text-white font-mono">{selectedToken.balance.toLocaleString()} {selectedToken.symbol}</div>
                   </div>
                   <div className="flex items-center justify-between text-sm py-2">
                     <div className="text-white">Private {isNativeSelected ? 'eETH' : `e${currentToken.symbol}`}</div>
@@ -1094,9 +1110,7 @@ export default function DepositPage() {
                     </div>
                   </div>
                 </div>
-                <div className="mt-3 p-3 rounded-lg bg-white/10 border border-white/15 text-xs text-white flex items-center gap-2">
-                  <Wallet className="w-3.5 h-3.5" /> Real-time balance from contracts.
-                </div>
+                
               </section>
             </div>
           </div>

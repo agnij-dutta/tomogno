@@ -19,8 +19,9 @@ export function useEncryptedBalance(tokenAddress?: `0x${string}`, tokenDecimals:
     args: address && tokenAddress ? [address, tokenAddress] : address ? [address, "0x0000000000000000000000000000000000000000"] : undefined,
     chainId: sepolia.id,
     query: {
-      enabled: !!address,
+      enabled: !!address && (!!tokenAddress || true),
     },
+    scopeKey: tokenAddress ? `encbal:${tokenAddress}` : 'encbal:native',
   });
 
   // Debug the contract call result
@@ -33,8 +34,8 @@ export function useEncryptedBalance(tokenAddress?: `0x${string}`, tokenDecimals:
   const [decryptError, setDecryptError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    console.log('🔍 useEncryptedBalance effect triggered:', { encryptedBalance, address });
-    if (encryptedBalance && address) {
+    console.log('🔍 useEncryptedBalance effect triggered:', { encryptedBalance, address, tokenAddress });
+    if (address) {
       const decryptBalance = async () => {
         try {
           setIsDecrypting(true);
@@ -57,6 +58,20 @@ export function useEncryptedBalance(tokenAddress?: `0x${string}`, tokenDecimals:
           };
 
           let ebLocal: any = encryptedBalance as any;
+
+          // Always fetch fresh when tokenAddress provided to ensure immediate update on selection change
+          try {
+            const client = createPublicClient({ chain: sepolia, transport: http() });
+            const fetched = await client.readContract({
+              address: EERC_CONTRACT.address,
+              abi: EERC_CONTRACT.abi,
+              functionName: 'getBalanceFromTokenAddress',
+              args: [address as `0x${string}`, (tokenAddress || '0x0000000000000000000000000000000000000000') as `0x${string}`],
+            });
+            ebLocal = fetched;
+          } catch (e) {
+            console.warn('Direct fetch of encrypted balance failed; using cached value', e);
+          }
 
           // Fallback: if zero for native token, scan all registered tokens and pick first non-zero
           if (!tokenAddress && isEgctZero(ebLocal)) {

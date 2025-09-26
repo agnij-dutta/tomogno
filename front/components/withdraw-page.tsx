@@ -35,20 +35,6 @@ export default function WithdrawPage() {
   const { address } = useAccount()
   
   // Withdraw hook integration
-  const {
-    isGeneratingProof,
-    proofError,
-    generatedProof,
-    isPending,
-    isConfirming,
-    isConfirmed,
-    error: contractError,
-    txHash,
-    generateWithdrawProof,
-    withdraw,
-    isReady,
-  } = useWithdraw()
-
   // Token discovery
   const { tokens: discoveredTokens, isLoading: isLoadingTokens } = useTokens()
 
@@ -65,6 +51,20 @@ export default function WithdrawPage() {
     isLoading: isLoadingBalance,
     error: balanceError,
   } = useEncryptedBalance(selectedTokenAddress || undefined, selectedTokenDecimals)
+
+  const {
+    isGeneratingProof,
+    proofError,
+    generatedProof,
+    isPending,
+    isConfirming,
+    isConfirmed,
+    error: contractError,
+    txHash,
+    generateWithdrawProof,
+    withdraw,
+    isReady,
+  } = useWithdraw(selectedTokenAddress || undefined, selectedTokenDecimals)
 
   // Available tokens from chain metadata
   const tokens = useMemo<Token[]>(() => {

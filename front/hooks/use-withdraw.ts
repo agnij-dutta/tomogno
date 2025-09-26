@@ -6,6 +6,9 @@ import { EERC_CONTRACT, REGISTRAR_CONTRACT } from '../lib/contracts';
 import { sepolia } from 'wagmi/chains';
 import { formatEther, parseEther } from 'viem';
 import { i0 } from '../lib/crypto-utils';
+import { formatPrivKeyForBabyJub } from 'maci-crypto';
+import { subOrder } from '@zk-kit/baby-jubjub';
+import { processPoseidonEncryption } from '../lib/poseidon/poseidon';
 import { getDecryptedBalance } from '../lib/balances/balances';
 import * as snarkjs from 'snarkjs';
 
@@ -24,7 +27,7 @@ export interface WithdrawProof {
   publicSignals: readonly bigint[];
 }
 
-export function useWithdraw() {
+export function useWithdraw(tokenAddress?: `0x${string}`, tokenDecimals: number = 18) {
   const { address } = useAccount();
   const chainId = useChainId();
   const { signMessageAsync } = useSignMessage();
@@ -44,9 +47,9 @@ export function useWithdraw() {
     address: EERC_CONTRACT.address,
     abi: EERC_CONTRACT.abi,
     functionName: 'getBalanceFromTokenAddress',
-    args: address ? [address, "0x0000000000000000000000000000000000000000"] : undefined,
+    args: address && tokenAddress ? [address, tokenAddress] : undefined,
     chainId: sepolia.id,
-    query: { enabled: !!address && isOnCorrectChain }
+    query: { enabled: !!address && !!tokenAddress && isOnCorrectChain, scopeKey: tokenAddress }
   });
 
   // Read auditor public key
@@ -79,7 +82,8 @@ export function useWithdraw() {
     setGeneratedProof(null);
 
     try {
-      const message = `Generate withdraw proof for ${address}`;
+      // Derive the SAME private key used during registration
+      const message = `eERC\nRegistering user with\n Address:${address.toLowerCase()}`;
       const signature = await signMessageAsync({ message });
       const privateKey = i0(signature);
 
@@ -96,28 +100,83 @@ export function useWithdraw() {
       }
 
       // Prepare circuit inputs
+      // Withdraw/Transfer circuits expect ValueToWithdraw as a single field (internal 2 decimals).
+      // Convert wei amount (tokenDecimals) down to 2-decimal protocol units
+      const INTERNAL_DECIMALS = 2n;
+      const desiredDecimals = INTERNAL_DECIMALS;
+      const tokenDecimalsBig = BigInt(tokenDecimals);
+      const diff = tokenDecimalsBig - desiredDecimals;
+      const valueToWithdrawInternal = diff >= 0n
+        ? (params.amount / (10n ** diff))
+        : (params.amount * (10n ** (-diff)));
+
+      // Scale currentBalance (assumed 18 decimals) down to internal 2 decimals
+      const senderBalanceInternal = diff >= 0n
+        ? (currentBalance / (10n ** diff))
+        : (currentBalance * (10n ** (-diff)));
+
+      // Normalize encrypted balance EGCT c1/c2 from possible tuple/object shapes
+      const ebAny: any = encryptedBalanceData as any;
+      let c1x = "0", c1y = "0", c2x = "0", c2y = "0";
+      try {
+        const eGCT = ebAny?.eGCT ?? ebAny?.[0];
+        const c1Any = eGCT?.c1 ?? eGCT?.[0];
+        const c2Any = eGCT?.c2 ?? eGCT?.[1];
+        c1x = (c1Any?.x ?? c1Any?.[0])?.toString?.() || "0";
+        c1y = (c1Any?.y ?? c1Any?.[1])?.toString?.() || "0";
+        c2x = (c2Any?.x ?? c2Any?.[0])?.toString?.() || "0";
+        c2y = (c2Any?.y ?? c2Any?.[1])?.toString?.() || "0";
+      } catch (_) {
+        // fall back to zeros if shape mismatches
+      }
+
+      // Guard: require non-zero EGCT for selected token
+      if (c1x === "0" || c1y === "0" || c2x === "0" || c2y === "0") {
+        throw new Error('Encrypted balance not found for selected token');
+      }
+
+      // Generate Auditor PCT payload for the withdrawal amount
+      // This produces ciphertext[4], nonce, encRandom, authKey[2]
+      const auditorEnc = processPoseidonEncryption(
+        [valueToWithdrawInternal],
+        [BigInt(auditorX), BigInt(auditorY)]
+      );
+
+      const formattedPrivateKey = (formatPrivKeyForBabyJub(privateKey) % subOrder);
+
       const inputs = {
-        ValueToWithdraw: params.amount.toString(),
-        SenderPrivateKey: privateKey.toString(),
+        ValueToWithdraw: valueToWithdrawInternal.toString(),
+        SenderPrivateKey: formattedPrivateKey.toString(),
         SenderPublicKey: [userPublicKey[0].toString(), userPublicKey[1].toString()],
-        SenderBalance: currentBalance.toString(),
-        SenderBalanceC1: [
-          (encryptedBalanceData as any)?.eGCT?.c1?.x?.toString() || "0",
-          (encryptedBalanceData as any)?.eGCT?.c1?.y?.toString() || "0"
-        ],
-        SenderBalanceC2: [
-          (encryptedBalanceData as any)?.eGCT?.c2?.x?.toString() || "0",
-          (encryptedBalanceData as any)?.eGCT?.c2?.y?.toString() || "0"
-        ],
+        SenderBalance: senderBalanceInternal.toString(),
+        SenderBalanceC1: [c1x, c1y],
+        SenderBalanceC2: [c2x, c2y],
         AuditorPublicKey: [auditorX, auditorY],
-        RecipientAddress: BigInt(params.recipient).toString(),
+        AuditorPCT: auditorEnc.ciphertext.map((v: bigint) => v.toString()),
+        AuditorPCTAuthKey: auditorEnc.authKey.map((v: bigint) => v.toString()),
+        AuditorPCTNonce: auditorEnc.nonce.toString(),
+        AuditorPCTRandom: auditorEnc.encRandom.toString(),
       };
 
       console.log('🔐 Generating withdraw proof with inputs:', inputs);
 
       // Generate proof using snarkjs
+      // Files must be present in public/circuits
       const wasmPath = '/circuits/WithdrawCircuit.wasm';
       const zkeyPath = '/circuits/WithdrawCircuit.groth16.zkey';
+
+      // Verify assets exist to avoid confusing wasm errors
+      try {
+        const [wRes, zRes] = await Promise.all([
+          fetch(wasmPath, { method: 'HEAD' }),
+          fetch(zkeyPath, { method: 'HEAD' })
+        ]);
+        if (!wRes.ok || !zRes.ok) {
+          throw new Error('Withdraw circuit assets missing. Place WithdrawCircuit.wasm and WithdrawCircuit.groth16.zkey under /public/circuits');
+        }
+      } catch (e) {
+        throw e;
+      }
 
       const { proof, publicSignals } = await snarkjs.groth16.fullProve(
         inputs,
