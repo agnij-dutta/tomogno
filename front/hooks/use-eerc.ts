@@ -2,7 +2,7 @@
 
 import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
 import { EERC_CONTRACT } from '../lib/contracts'
-import { avalancheFuji } from 'wagmi/chains'
+import { sepolia } from 'wagmi/chains'
 
 type HexAddress = `0x${string}`
 
@@ -16,7 +16,7 @@ export function useEercWrites() {
       abi: EERC_CONTRACT.abi,
       functionName: 'deposit',
       args: [params.amount, params.tokenAddress, params.amountPCT],
-      chainId: avalancheFuji.id,
+      chainId: sepolia.id,
     })
   }
 
@@ -26,7 +26,7 @@ export function useEercWrites() {
       abi: EERC_CONTRACT.abi,
       functionName: 'withdraw',
       args: [params.tokenId, params.proof, params.balancePCT],
-      chainId: avalancheFuji.id,
+      chainId: sepolia.id,
     })
   }
 
@@ -36,7 +36,7 @@ export function useEercWrites() {
       abi: EERC_CONTRACT.abi,
       functionName: 'transfer',
       args: [params.to, params.tokenId, params.proof, params.balancePCT],
-      chainId: avalancheFuji.id,
+      chainId: sepolia.id,
     })
   }
 

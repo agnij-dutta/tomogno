@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useAccount, useChainId, usePublicClient, useSwitchChain, useWriteContract } from "wagmi";
-import { avalancheFuji } from "wagmi/chains";
+import { sepolia } from "wagmi/chains";
 import { IntentExecutor, type ExecutorHooks } from "@/lib/ai/executors";
 import { useRouter } from "next/navigation";
 import { SelfQRCode } from "@/components/self-qr-code";
@@ -33,7 +33,7 @@ export default function AIPage() {
         "💸 **Withdrawals**: Check compliance and withdraw tokens\n" +
         "🛡️ **Compliance**: KYC verification and zk-attestations\n" +
         "⚡ **Hedera**: Network operations and token management\n\n" +
-        "Try: 'deposit 1 AVAX', 'swap 100 eUSDC to eDAI', 'check my registration status', or 'what's my balance?'",
+        "Try: 'deposit 1 ETH', 'swap 100 eUSDC to eDAI', 'check my registration status', or 'what's my balance?'",
     },
   ]);
   const [input, setInput] = useState("");
@@ -307,7 +307,7 @@ export default function AIPage() {
                   
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex-1 text-xs text-white/60 font-medium">
-                      Examples: deposit 1 AVAX | swap 100 eUSDC to eDAI | check registration | withdraw 0.5 eETH | what's my balance?
+                      Examples: deposit 1 ETH | swap 100 eUSDC to eDAI | check registration | withdraw 0.5 eETH | what's my balance?
                     </div>
                     <button
                       type="submit"

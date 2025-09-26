@@ -17,24 +17,30 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Progress } from "@/components/ui/progress"
-import { useNativeAVAX } from "@/hooks/use-native-avax"
+import { useNativeETH } from "@/hooks/use-native-eth"
+import { useERC20 } from "@/hooks/use-erc20"
 import { useEncryptedBalance } from "@/hooks/use-encrypted-balance"
+import { useTokens } from "@/hooks/use-tokens"
 import { useReadContract, useAccount, useWriteContract, useWaitForTransactionReceipt, useChainId, useSwitchChain } from 'wagmi'
 import { useRegistrationStatus } from '@/hooks/use-registration-status'
 import { useRegistration } from '@/hooks/use-registration'
 import { REGISTRAR_CONTRACT, EERC_CONTRACT, ERC20_TEST } from '@/lib/contracts'
-import { avalancheFuji } from 'wagmi/chains'
+import { sepolia } from 'wagmi/chains'
 import { processPoseidonEncryption } from '@/lib/poseidon/poseidon'
 import { parseUnits, formatUnits } from 'viem'
+
+type TokenType = 'ETH' | 'ERC20'
 
 type PublicToken = {
   symbol: string
   name: string
   priceUsd: number
   balance: number
+  type: TokenType
+  address?: string
 }
 
-const FIXED_DENOMS = [1, 5, 10] // AVAX amounts for testnet
+const FIXED_DENOMS = [0.1, 0.5, 1.0] // ETH amounts for testnet
 
 export default function DepositPage() {
   const router = useRouter()
@@ -45,25 +51,103 @@ export default function DepositPage() {
   const [successOpen, setSuccessOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [depositError, setDepositError] = useState<string | null>(null)
+  const [selectedTokenType, setSelectedTokenType] = useState<TokenType>('ETH')
   
-  useEffect(() => setMounted(true), [])
+  useEffect(() => {
+    setMounted(true)
+  }, [])
   const { address, isConnected, connector } = useAccount()
   const chainId = useChainId()
   const { switchChain, isPending: isSwitchingChain } = useSwitchChain()
+  // ETH balance hook
   const {
-    balance: publicBalance,
-    balanceRaw,
-    isLoading: balanceLoading,
-    error: balanceError,
-    symbol,
-    decimals,
-  } = useNativeAVAX()
+    balance: ethBalance,
+    balanceRaw: ethBalanceRaw,
+    isLoading: ethBalanceLoading,
+    error: ethBalanceError,
+    symbol: ethSymbol,
+    decimals: ethDecimals,
+  } = useNativeETH()
 
+  // ERC20 balance hook
+  const {
+    balance: erc20Balance,
+    balanceLoading: erc20BalanceLoading,
+    claimError: erc20BalanceError,
+    decimals: erc20Decimals,
+    allowance,
+    checkAllowanceSufficient,
+    handleApproveTokens
+  } = useERC20()
+  
+  const erc20BalanceRaw = BigInt(0) // Placeholder since not available
+  
+  const erc20Symbol = 'TEST'
+
+  // Current token data based on selection
+  const currentToken = useMemo(() => {
+    if (selectedTokenType === 'ETH') {
+      return {
+        balance: ethBalance,
+        balanceRaw: ethBalanceRaw,
+        isLoading: ethBalanceLoading,
+        error: ethBalanceError,
+        symbol: ethSymbol,
+        decimals: ethDecimals,
+        type: 'ETH' as TokenType,
+        name: 'Ethereum',
+        priceUsd: 2000, // Approximate ETH price
+        address: undefined
+      }
+    } else {
+      return {
+        balance: erc20Balance,
+        balanceRaw: erc20BalanceRaw,
+        isLoading: erc20BalanceLoading,
+        error: erc20BalanceError,
+        symbol: erc20Symbol,
+        decimals: erc20Decimals,
+        type: 'ERC20' as TokenType,
+        name: 'Test Token',
+        priceUsd: 1, // Test token price
+        address: ERC20_TEST.address
+      }
+    }
+  }, [selectedTokenType, ethBalance, ethBalanceRaw, ethBalanceLoading, ethBalanceError, ethSymbol, ethDecimals, erc20Balance, erc20BalanceRaw, erc20BalanceLoading, erc20BalanceError, erc20Symbol, erc20Decimals])
+
+  // Alias for easier use
+  const publicBalance = currentToken.balance
+  const balanceRaw = currentToken.balanceRaw
+  const balanceLoading = currentToken.isLoading
+  const balanceError = currentToken.error
+  const symbol = currentToken.symbol
+  const decimals = currentToken.decimals
+
+  const { tokens } = useTokens()
+  const [selectedTokenAddress, setSelectedTokenAddress] = useState<`0x${string}` | null>(null)
+  const firstErc20 = useMemo(() => (tokens || []).find(t => !t.isNative), [tokens])
+  const selectedAddress = useMemo<`0x${string}` | undefined>(() => {
+    return selectedTokenType === 'ETH'
+      ? '0x0000000000000000000000000000000000000000'
+      : (selectedTokenAddress || firstErc20?.address)
+  }, [selectedTokenType, selectedTokenAddress, firstErc20])
+  const selectedMeta = useMemo(() => (tokens || []).find(t => t.address === (selectedAddress as any)), [tokens, selectedAddress])
+  const isNativeSelected = selectedTokenType === 'ETH'
+  // keep selectedTokenAddress in sync with the UI token type
+  useEffect(() => {
+    if (!tokens || tokens.length === 0) return
+    if (selectedTokenType === 'ETH') {
+      setSelectedTokenAddress('0x0000000000000000000000000000000000000000')
+    } else if (firstErc20) {
+      setSelectedTokenAddress(firstErc20.address)
+    }
+  }, [selectedTokenType, tokens, firstErc20])
+  const tokenDecimals = useMemo(() => selectedMeta?.decimals ?? (isNativeSelected ? 18 : 18), [selectedMeta, isNativeSelected])
   const { 
     decryptedBalance,
     isLoading: isLoadingEncryptedBalance,
     error: encryptedBalanceError
-  } = useEncryptedBalance()
+  } = useEncryptedBalance(selectedAddress as any, tokenDecimals)
 
   // Check if user is registered
   const { 
@@ -72,6 +156,20 @@ export default function DepositPage() {
     isOnCorrectChain: isRegistrationOnCorrectChain,
     refetch: refetchRegistrationStatus
   } = useRegistrationStatus(address)
+
+  // Check auditor status
+  const { 
+    data: isAuditorSet,
+    isLoading: isCheckingAuditor,
+    error: auditorError
+  } = useReadContract({
+    address: EERC_CONTRACT.address,
+    abi: EERC_CONTRACT.abi,
+    functionName: 'isAuditorKeySet',
+    query: {
+      enabled: !!address && isConnected
+    }
+  })
 
   // Registration functionality
   const { 
@@ -96,7 +194,7 @@ export default function DepositPage() {
     abi: REGISTRAR_CONTRACT.abi,
     functionName: 'getUserPublicKey',
     args: address ? [address] : undefined,
-    chainId: avalancheFuji.id,
+    chainId: sepolia.id,
     query: { 
       enabled: isRegistered && isRegistrationOnCorrectChain && !!address 
     }
@@ -120,17 +218,17 @@ export default function DepositPage() {
   useEffect(() => {
     console.log('🔗 Chain status:', {
       currentChainId: chainId,
-      targetChainId: avalancheFuji.id,
-      isCorrectChain: chainId === avalancheFuji.id,
-      shouldShowSwitchButton: chainId !== avalancheFuji.id,
-      avalancheFujiId: avalancheFuji.id,
+      targetChainId: sepolia.id,
+      isCorrectChain: chainId === sepolia.id,
+      shouldShowSwitchButton: chainId !== sepolia.id,
+      sepoliaId: sepolia.id,
       chainIdType: typeof chainId
     })
   }, [chainId])
 
   // Force show switch button if there's a write error about chain mismatch
   const hasChainMismatchError = writeError?.message?.includes('chain') || writeError?.message?.includes('Chain ID')
-  const shouldShowSwitchButton = chainId !== avalancheFuji.id || hasChainMismatchError
+  const shouldShowSwitchButton = chainId !== sepolia.id || hasChainMismatchError
 
   // Add a manual refresh function
   const refreshChainStatus = () => {
@@ -145,13 +243,13 @@ export default function DepositPage() {
       console.log('🔍 Pre-deposit checks:', {
         isRegistered,
         hasUserPublicKey: !!userPublicKey,
-        userPublicKeyLength: userPublicKey ? (userPublicKey as any[]).length : 0,
+        userPublicKeyLength: userPublicKey ? (userPublicKey as readonly [bigint, bigint]).length : 0,
         address,
         isConnected,
         connector: connector?.name,
         currentChainId: chainId,
-        targetChainId: avalancheFuji.id,
-        isCorrectChain: chainId === avalancheFuji.id,
+        targetChainId: sepolia.id,
+        isCorrectChain: chainId === sepolia.id,
         amount: numericAmount,
         balance: publicBalance
       })
@@ -163,8 +261,16 @@ export default function DepositPage() {
         setDepositError(errorMsg)
         return
       }
+
+      // Check if auditor is set
+      if (isAuditorSet === false) {
+        const errorMsg = 'Auditor not set. Please set auditor first using the "Set Auditor" button.'
+        console.error('❌', errorMsg)
+        setDepositError(errorMsg)
+        return
+      }
       
-      if (!userPublicKey || (userPublicKey as any[]).length !== 2) {
+      if (!userPublicKey || (userPublicKey as readonly [bigint, bigint]).length !== 2) {
         const errorMsg = 'User public key not available for deposit'
         console.error('❌', errorMsg)
         setDepositError(errorMsg)
@@ -178,25 +284,22 @@ export default function DepositPage() {
         return
       }
       
-      if (chainId !== avalancheFuji.id) {
-        console.log('🔄 Wrong network detected, switching to Avalanche Fuji...')
+      if (chainId !== sepolia.id) {
+        console.log('🔄 Wrong network detected, switching to Ethereum Sepolia...')
         try {
-          await switchChain({ chainId: avalancheFuji.id })
-          console.log('✅ Switched to Avalanche Fuji, retrying deposit...')
-          // Wait a moment for the chain switch to complete
-          setTimeout(() => {
-            onConfirmDeposit()
-          }, 1000)
+          await switchChain({ chainId: sepolia.id })
+          console.log('✅ Switched to Ethereum Sepolia, please retry deposit')
+          setDepositError('Network switched. Please click "Confirm Deposit" again to complete the transaction.')
           return
         } catch (error) {
-          const errorMsg = `Failed to switch to Avalanche Fuji. Please switch manually to Chain ID: ${avalancheFuji.id}`
+          const errorMsg = `Failed to switch to Ethereum Sepolia. Please switch manually to Chain ID: ${sepolia.id}`
           console.error('❌', errorMsg)
           setDepositError(errorMsg)
           return
         }
       }
       
-      const pub = [BigInt((userPublicKey as any[])[0].toString()), BigInt((userPublicKey as any[])[1].toString())]
+      const pub = [BigInt((userPublicKey as readonly [bigint, bigint])[0].toString()), BigInt((userPublicKey as readonly [bigint, bigint])[1].toString())]
       
       // Convert amount to wei first, then to BigInt for encryption
       const amountWei = parseUnits(String(numericAmount), decimals || 18)
@@ -218,13 +321,13 @@ export default function DepositPage() {
         timestamp: new Date().toISOString()
       })
       
-      // For native AVAX, we need to send the value directly
+      // For native ETH, we need to send the value directly
       console.log('🚀 Submitting deposit transaction...')
       console.log('📋 Transaction details:', {
         contractAddress: EERC_CONTRACT.address,
         functionName: 'deposit',
         args: [amountWei.toString(), "0x0000000000000000000000000000000000000000", amountPCT.map(x => x.toString())],
-        chainId: avalancheFuji.id,
+        chainId: sepolia.id,
         value: amountWei.toString(),
         userAddress: address
       })
@@ -242,13 +345,33 @@ export default function DepositPage() {
       
       console.log('🔄 Calling depositTokens function...')
       
+      // Prepare deposit arguments based on token type
+      let depositArgs: [bigint, `0x${string}`, readonly [bigint, bigint, bigint, bigint, bigint, bigint, bigint]]
+      let depositValue: bigint | undefined
+      
+      if (selectedTokenType === 'ETH') {
+        // Native ETH deposit
+        depositArgs = [amountWei, "0x0000000000000000000000000000000000000000", amountPCT]
+        depositValue = amountWei
+      } else {
+        // ERC20 token deposit: approve then deposit in one click
+        depositArgs = [amountWei, currentToken.address!, amountPCT]
+        depositValue = undefined
+
+        if (!checkAllowanceSufficient(amount)) {
+          console.log('🔄 Insufficient allowance, approving tokens...')
+          await handleApproveTokens(amount)
+          console.log('✅ Tokens approved, proceeding to deposit...')
+        }
+      }
+      
       const result = await depositTokens({
         address: EERC_CONTRACT.address,
         abi: EERC_CONTRACT.abi,
         functionName: 'deposit',
-        args: [amountWei, "0x0000000000000000000000000000000000000000", amountPCT], // Zero address for native token
-        chainId: avalancheFuji.id,
-        value: amountWei, // Send native AVAX
+        args: depositArgs,
+        chainId: sepolia.id,
+        value: depositValue as any,
       })
       
       console.log('✅ Deposit transaction submitted successfully!', result)
@@ -261,33 +384,31 @@ export default function DepositPage() {
     }
   }
 
-  // Create dynamic token from native AVAX balance
+  // Create dynamic token from native ETH balance
   const selectedToken: PublicToken = useMemo(() => ({
-    symbol: symbol || "AVAX",
-    name: "Avalanche", 
-    priceUsd: 25, // Approximate AVAX price
-    balance: parseFloat(publicBalance || "0")
-  }), [publicBalance, symbol])
+    symbol: symbol || "ETH",
+    name: currentToken.name,
+    priceUsd: currentToken.priceUsd,
+    balance: parseFloat(publicBalance || "0"),
+    type: currentToken.type,
+    address: currentToken.address
+  }), [publicBalance, symbol, currentToken])
 
   // Derived values (UI only)
   const numericAmount = useMemo(() => Number.parseFloat(amount.replace(/,/g, "")) || 0, [amount])
   const amountUsd = useMemo(() => numericAmount * selectedToken.priceUsd, [numericAmount, selectedToken])
   const insufficient = numericAmount > selectedToken.balance
-  const canConfirm = numericAmount > 0 && !insufficient && !balanceLoading && isRegistered && chainId === avalancheFuji.id && !isSwitchingChain
+  const canConfirm = numericAmount > 0 && !insufficient && !balanceLoading && isRegistered && chainId === sepolia.id && !isSwitchingChain && isAuditorSet === true
 
-  function setPct(p: number) {
-    const next = Math.max(0, Math.min(selectedToken.balance, +(selectedToken.balance * p).toFixed(6)))
-    setAmount(next.toString())
-  }
-
-  function setMax() {
-    setAmount(String(selectedToken.balance))
-  }
-
-
+  // All useEffect hooks must be before any early returns
   useEffect(() => {
     if (isDepositConfirmed) {
       setSuccessOpen(true)
+      // Refresh encrypted balance after successful deposit
+      console.log('🔄 Refreshing encrypted balance after deposit...')
+      setTimeout(() => {
+        window.location.reload() // Force refresh to get updated balance
+      }, 3000) // Wait 3 seconds for blockchain to update
     }
   }, [isDepositConfirmed, numericAmount, selectedToken.symbol])
 
@@ -321,19 +442,37 @@ export default function DepositPage() {
 
   // Clear errors when chain switches correctly
   useEffect(() => {
-    if (chainId === avalancheFuji.id && !hasChainMismatchError) {
+    if (chainId === sepolia.id && !hasChainMismatchError) {
       console.log('✅ Chain is correct, clearing errors...')
       setDepositError(null)
     }
   }, [chainId, hasChainMismatchError])
 
-  // Function to switch to Avalanche Fuji for deposits
+  // Prevent hydration issues
+  if (!mounted) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-white">Loading...</div>
+      </div>
+    )
+  }
+
+  function setPct(p: number) {
+    const next = Math.max(0, Math.min(selectedToken.balance, +(selectedToken.balance * p).toFixed(6)))
+    setAmount(next.toString())
+  }
+
+  function setMax() {
+    setAmount(String(selectedToken.balance))
+  }
+
+  // Function to switch to Ethereum Sepolia for deposits
   const switchToAvalancheFuji = async () => {
     try {
-      console.log('🔄 Switching to Avalanche Fuji for deposits...')
+      console.log('🔄 Switching to Ethereum Sepolia for deposits...')
       console.log('📍 Current chain before switch:', chainId)
       
-      await switchChain({ chainId: avalancheFuji.id })
+      await switchChain({ chainId: sepolia.id })
       
       console.log('✅ Switch request sent, waiting for confirmation...')
       
@@ -347,7 +486,7 @@ export default function DepositPage() {
         console.log(`🔄 Checking chain switch... attempt ${attempts + 1}/${maxAttempts}`)
         console.log('📍 Current chain after switch:', chainId)
         
-        if (chainId === avalancheFuji.id) {
+        if (chainId === sepolia.id) {
           console.log('✅ Chain switch confirmed!')
           setDepositError(null) // Clear any previous errors
           return
@@ -360,7 +499,7 @@ export default function DepositPage() {
       
     } catch (error) {
       console.error('❌ Failed to switch chain:', error)
-      setDepositError('Failed to switch to Avalanche Fuji network. Please switch manually in your wallet.')
+      setDepositError('Failed to switch to Ethereum Sepolia network. Please switch manually in your wallet.')
     }
   }
 
@@ -372,16 +511,17 @@ export default function DepositPage() {
         address: EERC_CONTRACT.address,
         abi: EERC_CONTRACT.abi,
         functionName: 'name', // Read function
-        chainId: avalancheFuji.id
+        chainId: sepolia.id
       })
       
-      // Try a simple read first to test connection
-      const result = await depositTokens({
-        address: EERC_CONTRACT.address,
-        abi: EERC_CONTRACT.abi,
-        functionName: 'name',
-        chainId: avalancheFuji.id,
-      })
+        // Try a simple read first to test connection
+        const result = await depositTokens({
+          address: EERC_CONTRACT.address,
+          abi: EERC_CONTRACT.abi,
+          functionName: 'deposit',
+          args: [BigInt(0), "0x0000000000000000000000000000000000000000", [BigInt(0), BigInt(0), BigInt(0), BigInt(0), BigInt(0), BigInt(0), BigInt(0)]],
+          chainId: sepolia.id,
+        })
       
       console.log('✅ Test transaction result:', result)
     } catch (error) {
@@ -445,7 +585,7 @@ export default function DepositPage() {
                     </span>
                   </div>
                   <div className="text-white text-base font-medium mt-2">
-                    Convert your AVAX into private eAVAX tokens.
+                    Convert your ETH into private eETH tokens.
                   </div>
                 </div>
 
@@ -464,7 +604,7 @@ export default function DepositPage() {
                       </button>
                     </TooltipTrigger>
                     <TooltipContent className="w-80 text-white border-white/15" side="bottom" align="end">
-                      Your AVAX is locked in the ShieldedVault, and you receive private eAVAX equivalents that only
+                      Your ETH is locked in the ShieldedVault, and you receive private eETH equivalents that only
                       you can spend.
                     </TooltipContent>
                   </Tooltip>
@@ -567,7 +707,7 @@ export default function DepositPage() {
                       <div>
                         <div className="text-orange-200 font-medium">Wrong Network</div>
                         <div className="text-orange-300/80 text-sm">
-                          You're on Chain ID: {chainId}. Deposits require Avalanche Fuji (Chain ID: {avalancheFuji.id}).
+                          You're on Chain ID: {chainId}. Deposits require Ethereum Sepolia (Chain ID: {sepolia.id}).
                           {hasChainMismatchError && " Click the button below to switch networks."}
                         </div>
                       </div>
@@ -584,7 +724,7 @@ export default function DepositPage() {
                             Switching...
                           </>
                         ) : (
-                          "Switch to Avalanche Fuji"
+                          "Switch to Ethereum Sepolia"
                         )}
                       </Button>
                       <Button
@@ -614,21 +754,72 @@ export default function DepositPage() {
                       </div>
                     </div>
 
+                    {/* Token Switcher */}
+                    <div className="mt-4 mb-4">
+                      <div className="flex gap-2 p-1 bg-white/5 rounded-xl border border-white/10">
+                        <button
+                          onClick={() => { setSelectedTokenType('ETH'); setSelectedTokenAddress('0x0000000000000000000000000000000000000000') }}
+                          className={`flex-1 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                            selectedTokenType === 'ETH'
+                              ? 'bg-white/20 text-white border border-white/20'
+                              : 'text-white/60 hover:text-white/80 hover:bg-white/10'
+                          }`}
+                        >
+                          <div className="flex items-center justify-center gap-2">
+                            <div className="w-5 h-5 bg-gradient-to-br from-blue-400 to-purple-600 rounded-full"></div>
+                            <span>ETH</span>
+                          </div>
+                          <div className="text-xs mt-1 opacity-80">
+                            Balance: {ethBalanceLoading ? '...' : `${parseFloat(ethBalance || '0').toFixed(4)} ETH`}
+                          </div>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedTokenType('ERC20');
+                            const firstErc20 = (tokens || []).find(t => !t.isNative)
+                            if (firstErc20) setSelectedTokenAddress(firstErc20.address)
+                          }}
+                          className={`flex-1 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                            selectedTokenType === 'ERC20'
+                              ? 'bg-white/20 text-white border border-white/20'
+                              : 'text-white/60 hover:text-white/80 hover:bg-white/10'
+                          }`}
+                        >
+                          <div className="flex items-center justify-center gap-2">
+                            <div className="w-5 h-5 bg-gradient-to-br from-green-400 to-blue-600 rounded-full"></div>
+                            <span>TEST</span>
+                          </div>
+                          <div className="text-xs mt-1 opacity-80">
+                            Balance: {erc20BalanceLoading ? '...' : `${parseFloat(erc20Balance || '0').toFixed(4)} TEST`}
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+
                     <div className="mt-4 grid sm:grid-cols-[1fr_auto] gap-4 items-stretch">
-                      {/* Token display (fixed to USDC) */}
+                      {/* Selected Token Display */}
                       <div className="w-full text-left backdrop-blur-xl border border-white/15 rounded-2xl px-5 py-4 flex items-center justify-between shadow-[inset_0_-1px_0_rgba(255,255,255,0.06)]"
                         style={{ background: "transparent" }}
                       >
                         <div className="flex items-center gap-4">
-                          <div className="w-7 h-7 bg-[#e6ff55] rounded-full flex items-center justify-center">
-                            <span className="text-black text-sm font-bold">{selectedToken.symbol[0]}</span>
+                          <div className={`w-7 h-7 rounded-full flex items-center justify-center ${
+                            selectedTokenType === 'ETH' 
+                              ? 'bg-gradient-to-br from-blue-400 to-purple-600' 
+                              : 'bg-gradient-to-br from-green-400 to-blue-600'
+                          }`}>
+                            <span className="text-white text-sm font-bold">{selectedToken.symbol[0]}</span>
                           </div>
                           <div>
-                            <div className="text-white text-lg font-semibold">{selectedToken.symbol}</div>
-                            <div className="text-white text-xs">{selectedToken.name}</div>
+                            <div className="text-white text-lg font-semibold">{selectedMeta?.isNative ? 'ETH' : selectedToken.symbol}</div>
+                            <div className="text-white text-xs">{selectedMeta?.isNative ? 'Ethereum' : selectedToken.symbol.replace(/^e/, '')}</div>
                           </div>
                         </div>
-                        <div className="text-white text-xs">Fixed</div>
+                        <div className="text-right">
+                          <div className="text-white text-sm font-medium">
+                            {balanceLoading ? '...' : `${parseFloat(publicBalance || '0').toFixed(4)}`}
+                          </div>
+                          <div className="text-white/60 text-xs">Balance</div>
+                        </div>
                       </div>
 
                       {/* Amount input */}
@@ -755,7 +946,7 @@ export default function DepositPage() {
                     </div>
 
                     <div className="mt-4 text-xs text-white">
-                      Step 1: Send AVAX • Step 2: Lock in ShieldedVault • Step 3: Mint eAVAX note
+                      Step 1: Send ETH • Step 2: Lock in ShieldedVault • Step 3: Mint eETH note
                     </div>
                   </section>
 
@@ -794,7 +985,7 @@ export default function DepositPage() {
                           </>
                         ) : (
                           <>
-                            <AlertTriangle className="w-4 h-4" /> Switch to Avalanche Fuji
+                            <AlertTriangle className="w-4 h-4" /> Switch to Ethereum Sepolia
                           </>
                         )}
                       </Button>
@@ -813,8 +1004,8 @@ export default function DepositPage() {
                       onClick={() => {
                         console.log('🔍 Debug Chain Info:', {
                           chainId,
-                          avalancheFujiId: avalancheFuji.id,
-                          isCorrectChain: chainId === avalancheFuji.id,
+                          sepoliaId: sepolia.id,
+                          isCorrectChain: chainId === sepolia.id,
                           shouldShowSwitchButton,
                           hasChainMismatchError,
                           writeError: writeError?.message
@@ -824,6 +1015,37 @@ export default function DepositPage() {
                     >
                       🔍 Debug Chain Status
                     </Button>
+
+                    {/* Auditor Status and Set Button */}
+                    <div className="space-y-2">
+                      <div className="text-xs text-white/60 text-center">
+                        Auditor Status: {isCheckingAuditor ? 'Checking...' : isAuditorSet ? '✅ Set' : '❌ Not Set'}
+                      </div>
+                      {!isAuditorSet && (
+                        <Button
+                          onClick={async () => {
+                            try {
+                              console.log('🔐 Setting auditor public key...')
+                              const txHash = await depositTokens({
+                                address: EERC_CONTRACT.address,
+                                abi: EERC_CONTRACT.abi,
+                                functionName: 'setAuditorPublicKey',
+                                args: [address!], // Use current user as auditor
+                                chainId: sepolia.id,
+                              })
+                              console.log('✅ Auditor set transaction submitted:', txHash)
+                              setDepositError('Auditor set transaction submitted. Please wait for confirmation.')
+                            } catch (error: any) {
+                              console.error('❌ Failed to set auditor:', error)
+                              setDepositError(`Failed to set auditor: ${error.message}`)
+                            }
+                          }}
+                          className="w-full flex items-center justify-center gap-2 h-8 px-4 rounded-full bg-orange-500 text-white font-medium text-xs hover:bg-orange-600 transition"
+                        >
+                          🔐 Set Auditor (Admin)
+                        </Button>
+                      )}
+                    </div>
 
                   </section>
 
@@ -874,23 +1096,21 @@ export default function DepositPage() {
               >
                 <div className="flex items-center justify-between">
                   <div className="text-white text-base font-semibold">Current Balance</div>
-                  <div className="text-xs text-white">Live data</div>
+                  <div className="text-xs text-white/70">Balances</div>
                 </div>
                 <div className="mt-3 space-y-2">
                   <div className="flex items-center justify-between text-sm py-2">
-                    <div className="text-white">Public AVAX</div>
-                    <div className="text-white font-mono">{selectedToken.balance.toLocaleString()} AVAX</div>
+                    <div className="text-white">Public {selectedToken.symbol}</div>
+                    <div className="text-white font-mono">{selectedToken.balance.toLocaleString()} {selectedToken.symbol}</div>
                   </div>
                   <div className="flex items-center justify-between text-sm py-2">
-                    <div className="text-white">Private eAVAX</div>
+                    <div className="text-white">Private {isNativeSelected ? 'eETH' : `e${currentToken.symbol}`}</div>
                     <div className="text-white font-mono">
-                      {isLoadingEncryptedBalance ? "Loading..." : `${decryptedBalance || "0"} eAVAX`}
+                      {isLoadingEncryptedBalance ? "Loading..." : `${decryptedBalance || "0"} ${isNativeSelected ? 'eETH' : `e${currentToken.symbol}`}`}
                     </div>
                   </div>
                 </div>
-                <div className="mt-3 p-3 rounded-lg bg-white/10 border border-white/15 text-xs text-white flex items-center gap-2">
-                  <Wallet className="w-3.5 h-3.5" /> Real-time balance from contracts.
-                </div>
+                
               </section>
             </div>
           </div>

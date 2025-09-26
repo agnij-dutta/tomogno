@@ -106,12 +106,12 @@ export const depositTokens = new DynamicStructuredTool({
       return createResponse(false, "Missing required parameter: amount");
     }
     
-    // Default to native AVAX if no token specified
+    // Default to native ETH if no token specified
     const tokenAddress = token || "0x0000000000000000000000000000000000000000";
     
     console.log("🔧 deposit_tokens processed:", { tokenAddress, amountStr, decimals, denomination });
     
-    return createResponse(true, `Deposit of ${amountStr} ${tokenAddress === "0x0000000000000000000000000000000000000000" ? "AVAX" : "tokens"} initiated`, undefined, "deposit", { token: tokenAddress, amount: amountStr, decimals, denomination });
+    return createResponse(true, `Deposit of ${amountStr} ${tokenAddress === "0x0000000000000000000000000000000000000000" ? "ETH" : "tokens"} initiated`, undefined, "deposit", { token: tokenAddress, amount: amountStr, decimals, denomination });
   },
 });
 

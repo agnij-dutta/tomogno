@@ -63,6 +63,34 @@ contracts/deployments/*/.chainId
 contracts/deployments/*/run-*.json
 
 # ========================================
+# FH-ERC
+# ========================================
+
+# FH-ERC build artifacts
+fhERC/artifacts/
+fhERC/cache/
+fhERC/typechain-types/
+
+# FH-ERC generated types
+fhERC/generated-types/
+
+# FH-ERC circuit compilation
+fhERC/circom/build/
+fhERC/circom/*.r1cs
+fhERC/circom/*.wasm
+fhERC/circom/*.zkey
+fhERC/circom/*.vkey
+fhERC/circom/*.sym
+
+# FH-ERC verifier contracts (auto-generated)
+fhERC/contracts/verifiers/*Verifier.sol
+
+# FH-ERC test artifacts
+fhERC/coverage/
+fhERC/.nyc_output/
+
+
+# ========================================
 # Development & Testing
 # ========================================
 
@@ -87,6 +115,11 @@ pids/
 *.pid
 *.seed
 *.pid.lock
+
+# FH-ERC test artifacts
+fhERC/test/coverage/
+fhERC/test/.nyc_output/
+fhERC/deployments/
 
 # ========================================
 # Database & Storage

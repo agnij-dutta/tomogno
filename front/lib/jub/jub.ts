@@ -70,7 +70,9 @@ export const decryptPoint = (
 	const c1x = mulPointEscalar(c1Point, privKey);
 	
 	// Calculate the inverse point by negating the x-coordinate
-	const c1xInverse: Point<bigint> = [Fr.e(-c1x[0]), c1x[1]];
+	// Convert to field element, negate, then convert back to bigint
+	const negatedX = Fr.neg(Fr.e(c1x[0]));
+	const c1xInverse: Point<bigint> = [BigInt(negatedX.toString()), c1x[1]];
 	const c2Point: Point<bigint> = [c2[0], c2[1]];
 	
 	return addPoint(c2Point, c1xInverse);

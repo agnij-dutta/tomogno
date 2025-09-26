@@ -2,7 +2,7 @@
 
 import { useWriteContract, useWaitForTransactionReceipt, useAccount, useSignMessage, useChainId } from 'wagmi';
 import { REGISTRAR_CONTRACT } from '../lib/contracts';
-import { avalancheFuji } from 'wagmi/chains';
+import { sepolia } from 'wagmi/chains';
 import { useState, useEffect } from 'react';
 import { i0 } from '../lib/crypto-utils';
 import { Base8, subOrder, mulPointEscalar } from "@zk-kit/baby-jubjub";
@@ -124,13 +124,13 @@ export function useRegistration(refetchRegistrationStatus?: () => void) {
     if (generatedProof && !isWritePending && !isConfirming && !isConfirmed) {
       console.log('🚀 AUTO-SUBMITTING REGISTRATION TO BLOCKCHAIN');
       console.log('📍 Contract Address:', REGISTRAR_CONTRACT.address);
-      console.log('🌐 Target Network:', avalancheFuji.name, '(Chain ID:', avalancheFuji.id, ')');
+      console.log('🌐 Target Network:', sepolia.name, '(Chain ID:', sepolia.id, ')');
       console.log('👤 User Address:', address);
       
       // Network validation
-      if (chainId !== avalancheFuji.id) {
-        console.error('❌ Wrong network! Please switch to Avalanche Fuji');
-        setProofError(new Error('Please switch to Avalanche Fuji network'));
+      if (chainId !== sepolia.id) {
+        console.error('❌ Wrong network! Please switch to Ethereum Sepolia');
+        setProofError(new Error('Please switch to Ethereum Sepolia network'));
         return;
       }
       
@@ -142,7 +142,7 @@ export function useRegistration(refetchRegistrationStatus?: () => void) {
             abi: REGISTRAR_CONTRACT.abi,
             functionName: 'register',
             args: [generatedProof],
-            chainId: avalancheFuji.id,
+            chainId: sepolia.id,
           });
           
           console.log('✅ Registration submitted to blockchain!');
@@ -187,13 +187,13 @@ export function useRegistration(refetchRegistrationStatus?: () => void) {
     if (generatedProof) {
       console.log('🚀 SUBMITTING REGISTRATION TO BLOCKCHAIN');
       console.log('📍 Contract Address:', REGISTRAR_CONTRACT.address);
-      console.log('🌐 Target Network:', avalancheFuji.name, '(Chain ID:', avalancheFuji.id, ')');
+      console.log('🌐 Target Network:', sepolia.name, '(Chain ID:', sepolia.id, ')');
       console.log('👤 User Address:', address);
       
       // Network validation
-      if (chainId !== avalancheFuji.id) {
-        console.error('❌ Wrong network! Please switch to Avalanche Fuji');
-        setProofError(new Error('Please switch to Avalanche Fuji network'));
+      if (chainId !== sepolia.id) {
+        console.error('❌ Wrong network! Please switch to Ethereum Sepolia');
+        setProofError(new Error('Please switch to Ethereum Sepolia network'));
         return;
       }
       
@@ -204,7 +204,7 @@ export function useRegistration(refetchRegistrationStatus?: () => void) {
           abi: REGISTRAR_CONTRACT.abi,
           functionName: 'register',
           args: [generatedProof],
-          chainId: avalancheFuji.id,
+          chainId: sepolia.id,
         });
         
         console.log('✅ Registration submitted to blockchain!');
@@ -220,7 +220,7 @@ export function useRegistration(refetchRegistrationStatus?: () => void) {
     // If no proof yet, start the signature process
     console.log('🔥 STARTING REGISTRATION PROCESS');
     console.log('📍 Contract Address:', REGISTRAR_CONTRACT.address);
-    console.log('🌐 Target Network:', avalancheFuji.name, '(Chain ID:', avalancheFuji.id, ')');
+    console.log('🌐 Target Network:', sepolia.name, '(Chain ID:', sepolia.id, ')');
     console.log('👤 User Address:', address);
     
     try {

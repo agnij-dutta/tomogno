@@ -1,0 +1,83 @@
+{
+  "name": "fherc",
+  "version": "1.0.0",
+  "description": "Universal Encrypted ERC20 Token with Multi-chain Support",
+  "main": "index.js",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy": "hardhat run scripts/deploy-universal.ts",
+    "deploy:fuji": "CHAIN=fuji hardhat run scripts/deploy-universal.ts --network fuji",
+    "deploy:ethereum": "CHAIN=ethereum hardhat run scripts/deploy-universal.ts --network ethereum",
+    "deploy:polygon": "CHAIN=polygon hardhat run scripts/deploy-universal.ts --network polygon",
+    "deploy:base": "CHAIN=base hardhat run scripts/deploy-universal.ts --network base",
+    "deploy:arbitrum": "CHAIN=arbitrum hardhat run scripts/deploy-universal.ts --network arbitrum",
+    "deploy:optimism": "CHAIN=optimism hardhat run scripts/deploy-universal.ts --network optimism",
+    "deploy:sepolia": "CHAIN=sepolia hardhat run scripts/deploy-universal.ts --network sepolia",
+    "deploy:mumbai": "CHAIN=mumbai hardhat run scripts/deploy-universal.ts --network mumbai",
+    "deploy:baseSepolia": "CHAIN=baseSepolia hardhat run scripts/deploy-universal.ts --network baseSepolia",
+    "verify": "hardhat verify",
+    "clean": "hardhat clean",
+    "coverage": "hardhat coverage",
+    "size": "hardhat size-contracts",
+    "gas": "REPORT_GAS=true hardhat test",
+    "node": "hardhat node",
+    "fork": "hardhat node --fork https://eth-mainnet.alchemyapi.io/v2/${ALCHEMY_API_KEY}",
+    "dev": "hardhat node --fork https://eth-mainnet.alchemyapi.io/v2/${ALCHEMY_API_KEY} --port 8545"
+  },
+  "keywords": [
+    "blockchain",
+    "ethereum",
+    "privacy",
+    "zk-proofs",
+    "encryption",
+    "multi-chain",
+    "defi",
+    "erc20"
+  ],
+  "author": "fhERC Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-chai-matchers": "^2.0.2",
+    "@nomicfoundation/hardhat-ethers": "^3.0.5",
+    "@nomicfoundation/hardhat-network-helpers": "^1.0.8",
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "@nomicfoundation/hardhat-verify": "^2.0.0",
+    "@typechain/ethers-v6": "^0.5.0",
+    "@typechain/hardhat": "^9.1.0",
+    "@types/chai": "^4.3.5",
+    "@types/mocha": "^10.0.1",
+    "@types/node": "^20.10.0",
+    "chai": "^4.3.7",
+    "ethers": "^6.8.1",
+    "hardhat": "^2.19.0",
+    "hardhat-gas-reporter": "^1.0.9",
+    "solidity-coverage": "^0.8.5",
+    "ts-node": "^10.9.1",
+    "typechain": "^8.3.1",
+    "typescript": "^5.3.2"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.0",
+    "@solarity/chai-zkit": "^0.3.3",
+    "@solarity/hardhat-zkit": "^0.5.17",
+    "@zk-kit/baby-jubjub": "^1.0.3",
+    "@zk-kit/utils": "^1.4.1",
+    "dotenv": "^16.6.1",
+    "maci-crypto": "^2.5.0",
+    "poseidon-lite": "^0.3.0",
+    "snarkjs": "^0.7.5"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/fherc.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-org/fherc/issues"
+  },
+  "homepage": "https://github.com/your-org/fherc#readme"
+}

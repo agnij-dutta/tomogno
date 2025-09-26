@@ -3,13 +3,13 @@
 import { useEffect, useState } from "react";
 import { useReadContracts, useWriteContract, useWaitForTransactionReceipt, useAccount, useChainId } from "wagmi";
 import { ERC20_TEST, EERC_CONTRACT } from "../lib/contracts";
-import { avalancheFuji } from "wagmi/chains";
+import { sepolia } from "wagmi/chains";
 import { formatEther, parseUnits } from "viem";
 
 export function useERC20() {
   const { address } = useAccount();
   const chainId = useChainId();
-  const isOnCorrectChain = chainId === avalancheFuji.id;
+  const isOnCorrectChain = chainId === sepolia.id;
   const [timeToNextClaim, setTimeToNextClaim] = useState<number>(0);
   const [allowance, setAllowance] = useState<bigint>(0n);
 
@@ -73,13 +73,13 @@ export function useERC20() {
   const { isLoading: isApproveConfirming, isSuccess: isApproveConfirmed } = useWaitForTransactionReceipt({ hash: approveHash });
 
   const handleClaimFaucet = async () => {
-    if (!isOnCorrectChain) throw new Error("Please switch to Avalanche Fuji network");
+    if (!isOnCorrectChain) throw new Error("Please switch to Ethereum Sepolia network");
     if (!address) throw new Error("Please connect your wallet");
-    await claimFaucet({ address: ERC20_TEST.address, abi: ERC20_TEST.abi, functionName: "claimFromFaucet", chainId: avalancheFuji.id });
+    await claimFaucet({ address: ERC20_TEST.address, abi: ERC20_TEST.abi, functionName: "claimFromFaucet", chainId: sepolia.id });
   };
 
   const handleApproveTokens = async (amount: string) => {
-    if (!isOnCorrectChain) throw new Error("Please switch to Avalanche Fuji network");
+    if (!isOnCorrectChain) throw new Error("Please switch to Ethereum Sepolia network");
     if (!address || decimals == null) throw new Error("Please connect your wallet and wait for data to load");
     const amountInWei = parseUnits(amount, decimals);
     await approveTokens({
@@ -87,7 +87,7 @@ export function useERC20() {
       abi: ERC20_TEST.abi,
       functionName: "approve",
       args: [EERC_CONTRACT.address, amountInWei],
-      chainId: avalancheFuji.id,
+      chainId: sepolia.id,
     });
   };
 
